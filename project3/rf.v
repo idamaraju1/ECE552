@@ -48,7 +48,28 @@ module rf #(
     input  wire [ 4:0] i_rd_waddr,
     input  wire [31:0] i_rd_wdata
 );
-    // Fill in your implementation here.
+    // Fill in your implementation here.\
+    
+    reg [31:0] registers [0:31];
+
+    //Read
+    // For read port 1 (rs1)
+    assign o_rs1_rdata = (i_rs1_raddr == 5'd0) ? 32'd0 :  // x0 is always zero
+                         (BYPASS_EN && i_rd_wen && (i_rs1_raddr == i_rd_waddr)) ? i_rd_wdata :  // Bypass case
+                         registers[i_rs1_raddr];  // Normal case
+
+    // For read port 2 (rs2) 
+    assign o_rs2_rdata = (i_rs2_raddr == 5'd0) ? 32'd0 :  // x0 is always zero
+                         (BYPASS_EN && i_rd_wen && (i_rs2_raddr == i_rd_waddr)) ? i_rd_wdata :  // Bypass case
+                         registers[i_rs2_raddr];  // Normal case
+    
+    //Write
+    always @ (posedge i_clk) begin
+        if(i_rd_wen) begin
+            registers[i_rd_waddr] <= i_rd_wdata;
+        end
+    end
+
 endmodule
 
 `default_nettype wire
