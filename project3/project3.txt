@@ -1,0 +1,32 @@
+[Q0] Reflect: What should happen when you try to write to x0 (the hardwired zero
+register)?
+
+Nothing
+
+[Q1] Reflect: Why is the program counter register not included in the register file?
+
+It's not a general purpose register
+
+[Q2] Think: How would you increase or decrease the number of registers in the register
+file? What else (hint: how do registers relate to the ISA) would have to be modified to
+support this change?
+
+The number of bits for register address
+
+[Q3] Think: What happens if you select the wrong encoding as output? What is the
+immediate used for in R type instructions?
+
+
+
+[Q4] Think: Why do some formats (B-type, J-type) not specify imm[0], instead hardcoding
+it to zero? What would be the downside of removing this (and specifying all lower bits of
+the immediate including imm[0])?
+
+
+
+
+[Q5] Research: Some instruction formats have complex immediate encodings; J and U-type
+formats use a convoluted ordering of bits to construct the immediate while others use
+continuous bitstrings. Why do you think this is? Look through our ISA reference and the
+official RISC-V specification on Canvas for any hints from the designers of RISC-V.
+
