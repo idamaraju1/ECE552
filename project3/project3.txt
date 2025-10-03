@@ -1,32 +1,39 @@
 [Q0] Reflect: What should happen when you try to write to x0 (the hardwired zero
 register)?
 
-Nothing
+Nothing should happen when trying to write to x0. 
+The register file should either silently discard writes to address 5'd0 or always return zero when reading from that address, regardless of any previous write attempts.
 
 [Q1] Reflect: Why is the program counter register not included in the register file?
 
-It's not a general purpose register
+The program counter is not included in the register file because it's not a general-purpose register. 
+It serves a specialized function of tracking the current instruction address and is managed separately by the processor's control logic rather than being directly accessible through normal register operations.
 
 [Q2] Think: How would you increase or decrease the number of registers in the register
 file? What else (hint: how do registers relate to the ISA) would have to be modified to
 support this change?
 
-The number of bits for register address
+To change the number of registers in the register file, you would need to modify the number of bits used for register addressing. 
+Additionally, the entire ISA would need to be updated, including the instruction encoding formats, since register addresses are embedded in the instruction words. 
+This would require changes to the assembler, compiler, and any existing software compiled for the original ISA.
 
 [Q3] Think: What happens if you select the wrong encoding as output? What is the
 immediate used for in R type instructions?
 
-
+If you select the wrong encoding as output, you would get incorrect immediate values that could cause the processor to malfunction. 
+R-type instructions don't use immediates since they operate on register-to-register operations, so the immediate output becomes a don't-care condition that can produce any non-deterministic value without affecting correctness.
 
 [Q4] Think: Why do some formats (B-type, J-type) not specify imm[0], instead hardcoding
 it to zero? What would be the downside of removing this (and specifying all lower bits of
 the immediate including imm[0])?
 
-
-
+B-type and J-type instructions hardcode imm[0] to zero to ensure that all branch and jump addresses are properly aligned to 2-byte boundaries (since RISC-V instructions are multiples of 2 bytes). 
+The downside of removing this constraint would be that you could potentially jump to misaligned addresses, which would cause instruction fetch errors and processor faults. 
 
 [Q5] Research: Some instruction formats have complex immediate encodings; J and U-type
 formats use a convoluted ordering of bits to construct the immediate while others use
 continuous bitstrings. Why do you think this is? Look through our ISA reference and the
 official RISC-V specification on Canvas for any hints from the designers of RISC-V.
 
+This ordering helps fit larger immediates into limited instruction space and supports PC-relative addressing. 
+It also keeps hardware simple and ensures jump targets are aligned.
