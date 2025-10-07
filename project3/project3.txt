@@ -1,39 +1,17 @@
-[Q0] Reflect: What should happen when you try to write to x0 (the hardwired zero
-register)?
+[Q6] Reflect: In a future phase, you’ll write a processor that implements the RV32I ISA.
+How will you use these components (register file, immediate decoder, arithmetic logic unit)
+to do so? What other major components will you need to build?
 
-Nothing should happen when trying to write to x0. 
-The register file should either silently discard writes to address 5'd0 or always return zero when reading from that address, regardless of any previous write attempts.
+The register file will store and provide access to general-purpose registers, the immediate decoder will extract and format immediate values from instructions, and the ALU will perform arithmetic and logical operations. Other major components needed include the program counter, instruction memory, data memory, control unit for instruction decoding, and possibly pipeline registers if implementing pipelining.
 
-[Q1] Reflect: Why is the program counter register not included in the register file?
+[Q7] Think: Think about how this project phase and the previous connect to one another.
+How would you create a hardware multiply instruction and make it available in the ISA?
 
-The program counter is not included in the register file because it's not a general-purpose register. 
-It serves a specialized function of tracking the current instruction address and is managed separately by the processor's control logic rather than being directly accessible through normal register operations.
+To create a hardware multiply instruction, you would add a multiplier unit to the ALU and update the control logic to recognize the multiply opcode. The ISA would need to define the encoding for the multiply instruction, and the assembler/compiler would need to support it. The register file and instruction formats may also require updates to handle the new instruction.
 
-[Q2] Think: How would you increase or decrease the number of registers in the register
-file? What else (hint: how do registers relate to the ISA) would have to be modified to
-support this change?
+[Q8] Research: How would you implement instructions that operate on just the upper or
+lower 16 bits of a word? In other words, can you implement 16-bit instructions in a 32-bit
+processor? What modifications would you need to make to the register file, immediate
+encoder, and ALU?
 
-To change the number of registers in the register file, you would need to modify the number of bits used for register addressing. 
-Additionally, the entire ISA would need to be updated, including the instruction encoding formats, since register addresses are embedded in the instruction words. 
-This would require changes to the assembler, compiler, and any existing software compiled for the original ISA.
-
-[Q3] Think: What happens if you select the wrong encoding as output? What is the
-immediate used for in R type instructions?
-
-If you select the wrong encoding as output, you would get incorrect immediate values that could cause the processor to malfunction. 
-R-type instructions don't use immediates since they operate on register-to-register operations, so the immediate output becomes a don't-care condition that can produce any non-deterministic value without affecting correctness.
-
-[Q4] Think: Why do some formats (B-type, J-type) not specify imm[0], instead hardcoding
-it to zero? What would be the downside of removing this (and specifying all lower bits of
-the immediate including imm[0])?
-
-B-type and J-type instructions hardcode imm[0] to zero to ensure that all branch and jump addresses are properly aligned to 2-byte boundaries (since RISC-V instructions are multiples of 2 bytes). 
-The downside of removing this constraint would be that you could potentially jump to misaligned addresses, which would cause instruction fetch errors and processor faults. 
-
-[Q5] Research: Some instruction formats have complex immediate encodings; J and U-type
-formats use a convoluted ordering of bits to construct the immediate while others use
-continuous bitstrings. Why do you think this is? Look through our ISA reference and the
-official RISC-V specification on Canvas for any hints from the designers of RISC-V.
-
-This ordering helps fit larger immediates into limited instruction space and supports PC-relative addressing. 
-It also keeps hardware simple and ensures jump targets are aligned.
+To operate on just the upper or lower 16 bits, you could mask and shift values within the ALU. The register file would not need modification since it stores full 32-bit words, but the ALU would need logic to isolate and modify 16-bit portions. The immediate encoder might need to support 16-bit immediates, and the instruction formats would need to specify which half of the word to operate on. Implementing true 16-bit instructions would require changes to the instruction decoder and possibly the fetch logic to handle variable-length instructions.
