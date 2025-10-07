@@ -48,7 +48,37 @@ module rf #(
     input  wire [ 4:0] i_rd_waddr,
     input  wire [31:0] i_rd_wdata
 );
-    // Fill in your implementation here.
+    // Fill in your implementation here.\
+    
+    // 32 registers of 32 bits each
+    reg [31:0] registers [0:31];
+    integer i;
+    
+
+    // READ
+    assign o_rs1_rdata = (i_rs1_raddr == 5'd0) ? 32'd0 :  // x0
+                         (BYPASS_EN && i_rd_wen && (i_rs1_raddr == i_rd_waddr)) ? i_rd_wdata :  // RF Bypass
+                         registers[i_rs1_raddr];  // Normal case
+
+    assign o_rs2_rdata = (i_rs2_raddr == 5'd0) ? 32'd0 :  // x0 
+                         (BYPASS_EN && i_rd_wen && (i_rs2_raddr == i_rd_waddr)) ? i_rd_wdata :  // RF Bypass
+                         registers[i_rs2_raddr];  // Normal case
+
+    // WRITE
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            // On reset, initialize all registers to zero
+            for (i = 0; i < 32; i = i + 1) begin
+                registers[i] <= 32'd0;
+            end
+        end else if (i_rd_wen && (i_rd_waddr != 5'd0)) begin
+            // Write to the register file if write enable is high and not writing to x0
+            registers[i_rd_waddr] <= i_rd_wdata;
+        end
+    end
+
+
+
 endmodule
 
 `default_nettype wire

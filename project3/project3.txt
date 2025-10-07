@@ -1,0 +1,17 @@
+[Q6] Reflect: In a future phase, you’ll write a processor that implements the RV32I ISA.
+How will you use these components (register file, immediate decoder, arithmetic logic unit)
+to do so? What other major components will you need to build?
+
+The register file will store and provide access to general-purpose registers, the immediate decoder will extract and format immediate values from instructions, and the ALU will perform arithmetic and logical operations. Other major components needed include the program counter, instruction memory, data memory, control unit for instruction decoding, and possibly pipeline registers if implementing pipelining.
+
+[Q7] Think: Think about how this project phase and the previous connect to one another.
+How would you create a hardware multiply instruction and make it available in the ISA?
+
+To create a hardware multiply instruction, you would add a multiplier unit to the ALU and update the control logic to recognize the multiply opcode. The ISA would need to define the encoding for the multiply instruction, and the assembler/compiler would need to support it. The register file and instruction formats may also require updates to handle the new instruction.
+
+[Q8] Research: How would you implement instructions that operate on just the upper or
+lower 16 bits of a word? In other words, can you implement 16-bit instructions in a 32-bit
+processor? What modifications would you need to make to the register file, immediate
+encoder, and ALU?
+
+To operate on just the upper or lower 16 bits, you could mask and shift values within the ALU. The register file would not need modification since it stores full 32-bit words, but the ALU would need logic to isolate and modify 16-bit portions. The immediate encoder might need to support 16-bit immediates, and the instruction formats would need to specify which half of the word to operate on. Implementing true 16-bit instructions would require changes to the instruction decoder and possibly the fetch logic to handle variable-length instructions.
