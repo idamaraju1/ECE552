@@ -15,7 +15,7 @@ module alu (
     // 4'b0100: set < signed
     // 4'b0101: set >= signed
     // 4'b0110: set < unsigned
-    // 4'b0111: set >= unsigned
+    // 4'b0111: set >= unsigned 
     // 4'b1000: rs1 ^ rs2
     // 4'b1001: set ==
     // 4'b1010: rs1 >> rs2[4:0]
@@ -28,8 +28,11 @@ module alu (
     input  wire [31:0] i_op1,
     input  wire [31:0] i_op2, 
 
-    output wire [31:0] o_result, // Any carry out (from addition) should be ignored.
-    output wire        o_jump_condition, // whether the jump/branch condition is met
+    // output wire [31:0] o_result, // Any carry out (from addition) should be ignored.
+    // output wire        o_jump_condition // whether the jump/branch condition is met
+    // Botao: wire to reg
+    output reg  [31:0] o_result,           // Any carry out (from addition) should be ignored.
+    output reg         o_jump_condition    // whether the jump/branch condition is met
 );
     // 4'b0000: add
     wire [31:0] add_result;
@@ -107,6 +110,10 @@ module alu (
 
     // Output result selection
     always @(*) begin
+        // Botao: default assignments to avoid latches / X-propagation
+        o_result         = 32'b0;
+        o_jump_condition = 1'b0;
+
         case (i_opsel)
             4'b0000: begin
                 o_result = add_result;
