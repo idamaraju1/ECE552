@@ -3,8 +3,11 @@ module pc (
     input  wire        i_clk,
     input  wire        i_rst,
     input  wire [31:0] i_next_pc,
-    output wire [31:0] o_pc,
-    output wire        o_retire_valid
+    output reg [31:0] o_pc,
+    output reg        o_retire_valid
+    // Botao: revised wire to reg
+    // output wire [31:0] o_pc,
+    // output wire        o_retire_valid
 );
     always @(posedge i_clk) begin
         if (i_rst) begin
