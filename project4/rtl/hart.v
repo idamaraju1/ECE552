@@ -77,7 +77,7 @@ module hart #(
     // implementation will assert this every cycle; however, a pipelined
     // implementation that needs to stall (due to internal hazards or waiting
     // on memory accesses) will not assert the signal on cycles where the
-    // instruction in the writeback stage is not retiring.
+    // instruction in the write-back stage is not retiring.
     //
     // Asserted when an instruction is being retired this cycle. If this is
     // not asserted, the other retire signals are ignored and may be left invalid.
@@ -130,7 +130,135 @@ module hart #(
     ,`RVFI_OUTPUTS,
 `endif
 );
-    // Fill in your implementation here.
+    //////////////////////////////////////////////////////////////////////////////
+    // Decide if instruction is illegal (for trap signal)
+    //////////////////////////////////////////////////////////////////////////////
+    trap if_illegal(
+        .i_inst(i_imem_rdata),
+        .dmem_addr(o_dmem_addr),
+        .imem_addr(o_imem_raddr),
+        .o_trap(o_retire_trap)
+    );
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Generate control signals 
+    ////////////////////////////////////////////////////////////////////////////////
+    wire       RegWrite;
+    wire [5:0] inst_format;
+    wire       ALUSrc1;
+    wire       ALUSrc2;
+    wire [1:0] ALUop;
+    wire       lui;
+    wire       MemtoReg;
+    wire       Jump;
+    wire       Branch;
+    ctrl Control (
+        .i_inst(i_imem_rdata[31:0]),
+        .o_RegWrite(RegWrite),
+        .o_inst_format(inst_format),
+        .o_ALUSrc1(ALUSrc1),
+        .o_ALUSrc2(ALUSrc2),
+        .o_ALUop(ALUop),
+        .o_lui(lui),
+        .o_dmem_ren(o_dmem_ren),
+        .o_dmem_mask(o_dmem_mask),
+        .o_MemtoReg(MemtoReg),
+        .o_Jump(Jump),
+        .o_Branch(Branch)
+        .o_ebreak(o_retire_halt)
+    );
+    assign o_dmem_wen = ~o_dmem_ren;
+    
+    //////////////////////////////////////////////////////////////////////////////
+    // RegisterFile
+    ////////////////////////////////////////////////////////////////////////////////
+    assign o_retire_rs1_rdata = i_imem_rdata[19:15]; // rs1
+    assign o_retire_rs2_rdata = i_imem_rdata[24:20]; // rs2
+    assign o_retire_rd_waddr = i_imem_rdata[11:7];  // rd
+    rf #(.BYPASS_EN(0)) RegisterFile (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        // read port
+        .i_rs1_raddr(o_retire_rs1_raddr),
+        .o_rs1_rdata(o_retire_rs1_rdata),
+        .i_rs2_raddr(o_retire_rs2_raddr),
+        .o_rs2_rdata(o_retire_rs2_rdata),
+        // write port
+        .i_rd_wen(RegWrite),
+        .i_rd_waddr(o_retire_rd_waddr),
+        .i_rd_wdata(o_retire_rd_wdata)
+    );
+    assign o_retire_rd_wdata = 
+        (Jump) ? o_imem_raddr + 32'd4 :
+                 (~MemtoReg) ? alu_result :
+                              (i_imem_rdata[13]) ? i_dmem_rdata :
+                                                   ((i_imem_rdata[14] & i_imem_rdata[12]) ? { 16'd0, i_dmem_rdata[15:0]} : // lhu
+                                                    (i_imem_rdata[14] & ~i_imem_rdata[12]) ? { 24'd0, i_dmem_rdata[7:0]} : // lbu
+                                                    (~i_imem_rdata[14] & i_imem_rdata[12]) ? {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]} : // lh
+                                                        {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]}); // lb
+
+
+    //////////////////////////////////////////////////////////////////////////////
+    // Immediate Generator
+    ////////////////////////////////////////////////////////////////////////////////
+    wire [31:0] immediate;
+    imm ImmGen (
+        .i_inst(i_imem_rdata),
+        .i_format(inst_format),
+        .o_immediate(immediate)
+    );
+
+    //////////////////////////////////////////////////////////////////////////////
+    // ALU control
+    ////////////////////////////////////////////////////////////////////////////////
+    wire [3:0] alu_ctrl;
+    wire       is_bne;
+    alu_ctrl ALU_control (
+        .i_alu_op(ALUop),
+        .i_funct3(i_imem_rdata[14:12]),
+        .i_funct7_bit5(i_imem_rdata[30]),
+        .o_alu_ctrl(alu_ctrl),
+        .o_is_bne(is_bne)
+    );
+
+    ///////////////////////////////////////////////////////////////////////////////
+    // ALU
+    ///////////////////////////////////////////////////////////////////////////////
+    wire [31:0] alu_result;
+    wire        branch_condition;
+    alu ALU (
+        .i_rs1(ALUSrc1 ? (lui ? 32'd0 : o_imem_raddr) : o_retire_rs1_rdata),
+        .i_rs2(ALUSrc2 ? immediate : o_retire_rs2_rdata),
+        .i_opsel(alu_ctrl),
+        .i_is_bne(is_bne),
+        .o_result(alu_result),
+        .o_branch_condition(branch_condition)
+    );
+
+    //////////////////////////////////////////////////////////////////////////////
+    // Memory
+    //////////////////////////////////////////////////////////////////////////////
+    assign o_dmem_addr = alu_result;
+    assign o_dmem_wdata = o_retire_rs2_rdata;
+
+    //////////////////////////////////////////////////////////////////////////////
+    // PC
+    /////////////////////////////////////////////////////////////////////////////
+    wire [31:0] next_pc;
+    assign next_pc = 
+        (Jump) ? ((~i_imem_rdata[3]) ? {alu_result[31:1], 1'b0} : alu_result) :
+                 (Branch & branch_condition) ? (o_imem_raddr + immediate) :
+                                                (o_imem_raddr + 32'd4);
+    assign o_imem_next_pc = o_retire_halt ? o_imem_raddr : next_pc;
+    pc PC (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_next_pc(o_imem_next_pc),
+        .o_pc(o_imem_raddr),
+        .o_retire_valid(o_retire_valid)
+    );
+
+
 endmodule
 
 `default_nettype wire
