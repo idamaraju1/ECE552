@@ -249,11 +249,11 @@ module hart #(
         (Jump) ? ((~i_imem_rdata[3]) ? {alu_result[31:1], 1'b0} : alu_result) :
                  (Branch & branch_condition) ? (o_imem_raddr + immediate) :
                                                 (o_imem_raddr + 32'd4);
-    assign o_imem_next_pc = o_retire_halt ? o_imem_raddr : next_pc;
+    assign o_retire_next_pc = o_retire_halt ? o_imem_raddr : next_pc;
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_next_pc(o_imem_next_pc),
+        .i_next_pc(o_retire_next_pc),
         .o_pc(o_imem_raddr),
         .o_retire_valid(o_retire_valid)
     );
