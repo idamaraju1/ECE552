@@ -1,10 +1,13 @@
 `default_nettype none
 module alu_ctrl(
-    input wire         i_ALUop,
-    input wire [14:12] i_funct3,
+    // Botao: revised i_ALUop, i_funct3 declaration
+    // input wire         i_ALUop,
+    // input wire [14:12] i_funct3,
+    input  wire [1:0]  i_ALUop,        // 00:R, 01:I-imm, 10:Mem/U/J/JALR, 11:Branch
+    input  wire [2:0]  i_funct3,       // pass inst[14:12] at instantiation
     input wire         i_funct7_bit5,
 
-    output wire [3:0]  o_alu_ctrl,
+    // output wire [3:0]  o_alu_ctrl,
     // 4'b0000: add
     // 4'b0001: sub
     // 4'b0010: rs1 << rs2[4:0]
@@ -21,7 +24,10 @@ module alu_ctrl(
     // 4'b1101: rs1 >> rs2(imm)[4:0]
     // 4'b1110: rs1 & rs2
     // 4'b1111: rs1 >>> rs2(imm)[4:0]
-    output wire        o_is_bne
+    // output wire        o_is_bne
+    // Botao: revise wire to reg
+    output reg  [3:0]  o_alu_ctrl,
+    output reg         o_is_bne        // only used to invert BEQ into BNE
 );
 
 always @(*) begin
@@ -77,7 +83,9 @@ always @(*) begin
                 end
                 3'b101: begin // bge
                     o_alu_ctrl = 4'b0101; // set >= signed
-                    o_is_bne = 1'b1;
+                    o_is_bne = 1'b0;
+                    // Botao : set to 0
+                    // o_is_bne = 1'b1;
                 end
                 3'b110: begin // bltu
                     o_alu_ctrl = 4'b0110; // set < unsigned
@@ -99,7 +107,8 @@ always @(*) begin
     endcase 
 end
 
-always @(*)
+// Botao: delete blank always
+// always @(*)
 
 endmodule
 `default_nettype wire
