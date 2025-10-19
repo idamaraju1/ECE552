@@ -60,7 +60,7 @@ module hart #(
     // word right by 16 bits and sign/zero extend as appropriate.
     //
     // To perform a byte write at address 0x00002003, align `o_dmem_addr` to
-    // `0x00002003`, assert `o_dmem_wen`, and set the mask to 0b1000 to
+    // `0x00002000`, assert `o_dmem_wen`, and set the mask to 0b1000 to
     // indicate that only the upper byte should be written. On the next clock
     // cycle, the upper byte of `o_dmem_wdata` will be written to memory, with
     // the other three bytes of the aligned word unaffected. Remember to shift
