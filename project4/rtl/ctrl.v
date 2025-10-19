@@ -1,6 +1,7 @@
 `default_nettype none
 module ctrl (
     input  wire [31:0] i_inst,
+    input  wire        i_o_retire_trap, // from trap.v, only used to affect o_retire_halt
     // Output control signals:
     output wire        o_RegWrite,
     output wire [5:0]  o_inst_format,
@@ -13,6 +14,7 @@ module ctrl (
     output wire        o_MemtoReg,
     output wire        o_Jump,
     output wire        o_Branch
+    output wire        o_retire_halt
 );
     // CODE HERE: implement the control signal generation logic
 

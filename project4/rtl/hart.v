@@ -133,10 +133,10 @@ module hart #(
     //////////////////////////////////////////////////////////////////////////////
     // Decide if instruction is illegal (for trap signal)
     //////////////////////////////////////////////////////////////////////////////
-    trap if_illegal(
+    trap Trap(
         .i_inst(i_imem_rdata),
-        .dmem_addr(o_dmem_addr),
-        .imem_addr(o_imem_raddr),
+        .i_dmem_addr(o_dmem_addr),
+        .i_imem_addr(o_imem_raddr),
         .o_trap(o_retire_trap)
     );
 
@@ -153,7 +153,10 @@ module hart #(
     wire       Jump;
     wire       Branch;
     ctrl Control (
+        // inputs
         .i_inst(i_imem_rdata[31:0]),
+        .i_o_retire_trap(o_retire_trap),
+        // outputs
         .o_RegWrite(RegWrite),
         .o_inst_format(inst_format),
         .o_ALUSrc1(ALUSrc1),
@@ -164,8 +167,8 @@ module hart #(
         .o_dmem_mask(o_dmem_mask),
         .o_MemtoReg(MemtoReg),
         .o_Jump(Jump),
-        .o_Branch(Branch)
-        .o_ebreak(o_retire_halt)
+        .o_Branch(Branch),
+        .o_retire_halt(o_retire_halt)
     );
     assign o_dmem_wen = ~o_dmem_ren;
     

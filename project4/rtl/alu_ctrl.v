@@ -4,7 +4,6 @@ module alu_ctrl(
     input  wire [2:0]  i_funct3,       // pass inst[14:12] at instantiation
     input wire         i_funct7_bit5,
 
-    // output wire [3:0]  o_alu_ctrl,
     // 4'b0000: add
     // 4'b0001: sub
     // 4'b0010: rs1 << rs2[4:0]
