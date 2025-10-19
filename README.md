@@ -11,7 +11,7 @@ This project is divided into several phases:
 More to be announced...
 
 ## phase4 notes
-- HowToRun.txt: how to run local tests
+- HowToRun.txt (for unjuanable2): how to run local tests
 - all control signals.xlsx: values of all controls signals corresponding to each inst
 - rtl/: all .v files need to be submitted
   - rf.v: doesn't have an write_enable signal. Because in tb.v, they use the condition ```rd_waddr != 5'd0``` to indicate a write inst.
@@ -23,5 +23,5 @@ _Updated by unjuanable2 in 10.19_
 
 - In v3 schematic: draw the logic of o_dmem_mask, o_dmem_addr and i_dmem_rdata
 - implemant the logic in hart.v (or another new submodule if needed)
-- check post-synthesize
+- check post-synthesize test (gradescope)
 - draw schematics of other types of inst
