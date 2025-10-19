@@ -1,8 +1,5 @@
 `default_nettype none
 module alu_ctrl(
-    // Botao: revised i_ALUop, i_funct3 declaration
-    // input wire         i_ALUop,
-    // input wire [14:12] i_funct3,
     input  wire [1:0]  i_ALUop,        // 00:R, 01:I-imm, 10:Mem/U/J/JALR, 11:Branch
     input  wire [2:0]  i_funct3,       // pass inst[14:12] at instantiation
     input wire         i_funct7_bit5,
@@ -24,8 +21,6 @@ module alu_ctrl(
     // 4'b1101: rs1 >> rs2(imm)[4:0]
     // 4'b1110: rs1 & rs2
     // 4'b1111: rs1 >>> rs2(imm)[4:0]
-    // output wire        o_is_bne
-    // Botao: revise wire to reg
     output reg  [3:0]  o_alu_ctrl,
     output reg         o_is_bne        // only used to invert BEQ into BNE
 );

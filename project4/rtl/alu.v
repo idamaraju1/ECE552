@@ -28,9 +28,6 @@ module alu (
     input  wire [31:0] i_op1,
     input  wire [31:0] i_op2, 
 
-    // output wire [31:0] o_result, // Any carry out (from addition) should be ignored.
-    // output wire        o_jump_condition // whether the jump/branch condition is met
-    // Botao: wire to reg
     output reg  [31:0] o_result,           // Any carry out (from addition) should be ignored.
     output reg         o_jump_condition    // whether the jump/branch condition is met
 );
