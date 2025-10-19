@@ -60,7 +60,7 @@ module hart #(
     // word right by 16 bits and sign/zero extend as appropriate.
     //
     // To perform a byte write at address 0x00002003, align `o_dmem_addr` to
-    // `0x00002000`, assert `o_dmem_wen`, and set the mask to 0b1000 to
+    // `0x00002003`, assert `o_dmem_wen`, and set the mask to 0b1000 to
     // indicate that only the upper byte should be written. On the next clock
     // cycle, the upper byte of `o_dmem_wdata` will be written to memory, with
     // the other three bytes of the aligned word unaffected. Remember to shift
@@ -152,7 +152,6 @@ module hart #(
     wire       MemtoReg;
     wire       Jump;
     wire       Branch;
-    wire [3:0] ctrl_dmem_mask;
     
     ctrl Control (
         // inputs
@@ -167,7 +166,6 @@ module hart #(
         .o_lui(lui),
         .o_dmem_ren(o_dmem_ren),
         .o_dmem_wen(o_dmem_wen),
-        .o_dmem_mask(ctrl_dmem_mask),
         .o_MemtoReg(MemtoReg),
         .o_Jump(Jump),
         .o_Branch(Branch),
@@ -236,16 +234,14 @@ module hart #(
     //////////////////////////////////////////////////////////////////////////////
     // Memory - Handle unaligned accesses
     //////////////////////////////////////////////////////////////////////////////
-    
     // Calculate aligned address (clear lower 2 bits)
-    wire [31:0] aligned_addr = {alu_result[31:2], 2'b00};
+    assign o_dmem_addr = {alu_result[31:2], 2'b00};
 
     // Get byte offset from address
     wire [1:0] byte_offset = alu_result[1:0];
 
     // Adjust mask based on address offset
-    wire [3:0] adjusted_mask;
-    assign adjusted_mask = 
+    assign o_dmem_mask = 
         // For byte access (SB/LB/LBU)
         (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b000) ? (4'b0001 << byte_offset) : // SB
         (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b000) ? (4'b0001 << byte_offset) : // LB
@@ -256,24 +252,18 @@ module hart #(
         (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b001) ? (byte_offset[1] ? 4'b1100 : 4'b0011) : // LH
         (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b101) ? (byte_offset[1] ? 4'b1100 : 4'b0011) : // LHU
         
-        // For word access (SW/LW) - no adjustment needed
-        ctrl_dmem_mask;
+        // For word access (SW/LW) or any instructions of other types
+        4'b1111;
 
     // Adjust write data position (shift to correct byte lane)
-    wire [31:0] adjusted_wdata;
-    assign adjusted_wdata = 
+    assign o_dmem_wdata = 
         // SB: shift left by byte offset
         (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b000) ? (o_retire_rs2_rdata << (byte_offset * 8)) :
         // SH: shift left by half-word offset
         (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b001) ? (o_retire_rs2_rdata << (byte_offset[1] * 16)) :
         // SW: no shift needed
         o_retire_rs2_rdata;
-
-    // Output to memory interface
-    assign o_dmem_addr  = aligned_addr;
-    assign o_dmem_wdata = adjusted_wdata;
-    assign o_dmem_mask  = adjusted_mask;
-    
+ 
     // Extract and extend load data based on offset
     wire [31:0] load_data;
     assign load_data = 

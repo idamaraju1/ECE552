@@ -11,7 +11,6 @@ module ctrl (
     output reg        o_lui,
     output reg        o_dmem_ren,
     output reg        o_dmem_wen,
-    output reg [3:0]  o_dmem_mask,
     output reg        o_MemtoReg,
     output reg        o_Jump,
     output reg        o_Branch,
@@ -28,7 +27,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -42,7 +40,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -56,11 +53,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b1;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask =   (i_inst[14:12] == 3'b000) ? 4'b0001 : // LB
-                                (i_inst[14:12] == 3'b001) ? 4'b0011 : // LH
-                                (i_inst[14:12] == 3'b010) ? 4'b1111 : // LW
-                                (i_inst[14:12] == 3'b100) ? 4'b0001 : // LBU
-                                                            4'b0011 ; // LHU (funct3=101)
                 o_MemtoReg = 1'b1;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -74,9 +66,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b1;
-                o_dmem_mask = (i_inst[14:12] == 3'b000) ? 4'b0001 : // SB
-                              (i_inst[14:12] == 3'b001) ? 4'b0011 : // SH
-                                                          4'b1111 ; // SW
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -90,7 +79,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b1;
@@ -104,7 +92,6 @@ module ctrl (
                 o_lui = 1'b1;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -118,7 +105,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
@@ -132,7 +118,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b1;
                 o_Branch = 1'b0;
@@ -146,7 +131,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b1;
                 o_Branch = 1'b0;
@@ -160,7 +144,6 @@ module ctrl (
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
                 o_dmem_wen = 1'b0;
-                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
