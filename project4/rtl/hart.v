@@ -177,10 +177,9 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     assign o_retire_inst      = i_imem_rdata;
     assign o_retire_pc        = o_imem_raddr;
-
-    assign o_retire_rs1_rdata = i_imem_rdata[19:15]; // rs1
-    assign o_retire_rs2_rdata = i_imem_rdata[24:20]; // rs2
-    assign o_retire_rd_waddr = i_imem_rdata[11:7];  // rd
+    assign o_retire_rs1_raddr = i_imem_rdata[19:15]; // rs1
+    assign o_retire_rs2_raddr = i_imem_rdata[24:20]; // rs2
+    assign o_retire_rd_waddr  = i_imem_rdata[11:7];  // rd
     rf #(.BYPASS_EN(0)) rf (
         .i_clk(i_clk),
         .i_rst(i_rst),

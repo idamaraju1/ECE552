@@ -13,6 +13,8 @@ docker run --rm -it --platform=linux/amd64 -v "$(pwd)":/src -w /src coderkalyan/
 ls -la
 # should show all files in project4
 
-iverilog -g2012 -o cpu_tb rtl/*.v tb/tb.v
+cd tb
 
-vvp cpu_tb
+iverilog -o simv_student ../rtl/*.v tb.v
+
+vvp simv_student
