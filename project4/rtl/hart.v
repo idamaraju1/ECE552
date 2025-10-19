@@ -175,21 +175,22 @@ module hart #(
     //////////////////////////////////////////////////////////////////////////////
     // RegisterFile
     ////////////////////////////////////////////////////////////////////////////////
+    assign o_retire_inst      = i_imem_rdata;
+    assign o_retire_pc        = o_imem_raddr;
+
     assign o_retire_rs1_rdata = i_imem_rdata[19:15]; // rs1
     assign o_retire_rs2_rdata = i_imem_rdata[24:20]; // rs2
     assign o_retire_rd_waddr = i_imem_rdata[11:7];  // rd
-    rf #(.BYPASS_EN(0)) RegisterFile (
+    rf #(.BYPASS_EN(0)) rf (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        // read port
         .i_rs1_raddr(o_retire_rs1_raddr),
         .o_rs1_rdata(o_retire_rs1_rdata),
         .i_rs2_raddr(o_retire_rs2_raddr),
         .o_rs2_rdata(o_retire_rs2_rdata),
-        // write port
-        .i_rd_wen(RegWrite),
-        .i_rd_waddr(o_retire_rd_waddr),
-        .i_rd_wdata(o_retire_rd_wdata)
+        .i_rd_wen   (RegWrite),
+        .i_rd_waddr (o_retire_rd_waddr),
+        .i_rd_wdata (o_retire_rd_wdata)
     );
     assign o_retire_rd_wdata = 
         (Jump) ? o_imem_raddr + 32'd4 :
@@ -217,11 +218,11 @@ module hart #(
     wire [3:0] alu_ctrl;
     wire       is_bne;
     alu_ctrl ALU_control (
-        .i_alu_op(ALUop),
-        .i_funct3(i_imem_rdata[14:12]),
-        .i_funct7_bit5(i_imem_rdata[30]),
-        .o_alu_ctrl(alu_ctrl),
-        .o_is_bne(is_bne)
+        .i_ALUop       (ALUop), 
+        .i_funct3      (i_imem_rdata[14:12]),
+        .i_funct7_bit5 (i_imem_rdata[30]),
+        .o_alu_ctrl    (alu_ctrl),
+        .o_is_bne      (is_bne)
     );
 
     ///////////////////////////////////////////////////////////////////////////////
@@ -229,13 +230,14 @@ module hart #(
     ///////////////////////////////////////////////////////////////////////////////
     wire [31:0] alu_result;
     wire        branch_condition;
+
     alu ALU (
-        .i_rs1(ALUSrc1 ? (lui ? 32'd0 : o_imem_raddr) : o_retire_rs1_rdata),
-        .i_rs2(ALUSrc2 ? immediate : o_retire_rs2_rdata),
-        .i_opsel(alu_ctrl),
-        .i_is_bne(is_bne),
-        .o_result(alu_result),
-        .o_branch_condition(branch_condition)
+        .i_op1           (ALUSrc1 ? (lui ? 32'd0 : o_imem_raddr) : o_retire_rs1_rdata),
+        .i_op2           (ALUSrc2 ? immediate : o_retire_rs2_rdata),
+        .i_opsel         (alu_ctrl),
+        .i_is_bne        (is_bne),
+        .o_result        (alu_result),
+        .o_jump_condition(branch_condition)
     );
 
     //////////////////////////////////////////////////////////////////////////////

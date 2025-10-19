@@ -52,7 +52,7 @@ module ctrl (
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b1;
-                o_dmen_mask = 4'b0000;
+                o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b1;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
