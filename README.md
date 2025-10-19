@@ -9,3 +9,17 @@ This project is divided into several phases:
 4. Single-Cycle Processor Design (10.0%)
 
 More to be announced...
+
+## phase4 notes
+- HowToRun.txt: how to run local tests
+- all control signals.xlsx: values of all controls signals corresponding to each inst
+- rtl/: all .v files needed to be submitted
+- tb/: tb.v
+
+### TO-Do-List
+_Updated by unjuanable2 in 10.19_
+
+- In v3 schematic: draw the logic of o_dmem_mask, o_dmem_addr and i_dmem_rdata
+- implemant the logic in hart.v (or another new submodule if needed)
+- check post-synthesize
+- draw schematics of other types of inst
