@@ -1,8 +1,8 @@
 `default_nettype none
 module trap(
     input  wire [31:0] i_inst,
-    input  wire [31:0] dmem_addr, // effective data address for load/store
-    input  wire [31:0] imem_addr, // branch/jump target address when taken
+    input  wire [31:0] i_dmem_addr, // effective data address for load/store
+    input  wire [31:0] i_imem_addr, // branch/jump target address when taken
     output wire        o_trap
 );
     // basic fields
@@ -13,9 +13,8 @@ module trap(
     // -----------------------
     // 1) LEGAL OPCODES (+ EBREAK)
     // -----------------------
-    // EBREAK (SYSTEM opcode, funct3=000, imm12=1, rs1=0, rd=0) -> allowed & handled elsewhere (halt)
-    wire is_system  = (opcode == 7'b1110011); // SYSTEM
-    wire is_ebreak  = is_system
+    // EBREAK (opcode == 7'b1110011, funct3=000, imm12=1, rs1=0, rd=0) -> allowed & handled elsewhere (halt)
+    wire is_ebreak  = (opcode == 7'b1110011)
                     && (funct3 == 3'b000)
                     && (i_inst[31:20] == 12'h001)   // imm12 = 1
                     && (i_inst[19:15] == 5'd0)      // rs1 = x0
