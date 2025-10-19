@@ -13,7 +13,7 @@ More to be announced...
 ## phase4 notes
 - HowToRun.txt: how to run local tests
 - all control signals.xlsx: values of all controls signals corresponding to each inst
-- rtl/: all .v files needed to be submitted
+- rtl/: all .v files need to be submitted
   - rf.v: doesn't have an write_enable signal. Because in tb.v, they use the condition ```rd_waddr != 5'd0``` to indicate a write inst.
   - pc.v: doesn't instantiate dff.v. Because the reset values of o_pc and o_retire_valid aren't 0.
 - tb/: tb.v
