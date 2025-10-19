@@ -1,0 +1,18 @@
+docker pull coderkalyan/ece552-tools:latest
+
+cd tests/asm/
+
+make PROGRAM=01add
+
+cd ../.. 
+# back to project4/
+
+docker run --rm -it --platform=linux/amd64 -v "$(pwd)":/src -w /src coderkalyan/ece552-tools:latest bash
+# display root@.....:/src#
+
+ls -la
+# should show all files in project4
+
+iverilog -g2012 -o cpu_tb rtl/*.v tb/tb.v
+
+vvp cpu_tb

@@ -13,7 +13,7 @@ module ctrl (
     output reg [3:0]  o_dmem_mask,
     output reg        o_MemtoReg,
     output reg        o_Jump,
-    output reg        o_Branch
+    output reg        o_Branch,
     output wire        o_retire_halt
 );
     always @(*) begin
