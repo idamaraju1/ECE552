@@ -10,6 +10,7 @@ module ctrl (
     output reg [1:0]  o_ALUop,
     output reg        o_lui,
     output reg        o_dmem_ren,
+    output reg        o_dmem_wen,
     output reg [3:0]  o_dmem_mask,
     output reg        o_MemtoReg,
     output reg        o_Jump,
@@ -25,7 +26,8 @@ module ctrl (
                 o_ALUSrc2 = 1'b0;
                 o_ALUop = 2'b00;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
@@ -38,7 +40,8 @@ module ctrl (
                 o_ALUSrc2 = 1'b1;
                 o_ALUop = 2'b01;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
@@ -52,6 +55,7 @@ module ctrl (
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b1;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b1;
                 o_Jump = 1'b0;
@@ -65,6 +69,7 @@ module ctrl (
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
                 o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b1;
                 o_dmem_mask = (i_inst[14:12] == 3'b000) ? 4'b0001 : // SB
                               (i_inst[14:12] == 3'b001) ? 4'b0011 : // SH
                                                           4'b1111 ; // SW
@@ -79,33 +84,36 @@ module ctrl (
                 o_ALUSrc2 = 1'b0;
                 o_ALUop = 2'b11;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b1;
             end
-            7'b0110111: begin // U-type (LUI)
+            7'b0110111: begin // U-type (lui)
                 o_inst_format = 6'b010000; 
                 o_RegWrite = 1'b1;
                 o_ALUSrc1 = 1'b1;
                 o_ALUSrc2 = 1'b1;
                 o_ALUop = 2'b10;
                 o_lui = 1'b1;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
             end
-            7'b0010111: begin // U-type (LUI)
+            7'b0010111: begin // U-type (auipc)
                 o_inst_format = 6'b010000; 
                 o_RegWrite = 1'b1;
                 o_ALUSrc1 = 1'b1;
                 o_ALUSrc2 = 1'b1;
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;
@@ -118,7 +126,8 @@ module ctrl (
                 o_ALUSrc2 = 1'b1;
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b1;
@@ -131,7 +140,8 @@ module ctrl (
                 o_ALUSrc2 = 1'b1;
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b1;
@@ -144,7 +154,8 @@ module ctrl (
                 o_ALUSrc2 = 1'b0;
                 o_ALUop = 2'b10;
                 o_lui = 1'b0;
-                o_dmem_ren = 1'b1;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
                 o_dmem_mask = 4'b0000;
                 o_MemtoReg = 1'b0;
                 o_Jump = 1'b0;

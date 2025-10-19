@@ -15,6 +15,11 @@ ls -la
 
 cd tb
 
+# functional simulation
 iverilog -o simv_student ../rtl/*.v tb.v
-
+# iverilog -Wall -g2012 -o simv_student ../rtl/*.v tb.v: can see all warnings
 vvp simv_student
+
+# post-synthesis simulation
+iverilog -o simvg_student ../rtl/dut.vg ../rtl/saed32nm.v tb_postsyn.v
+vvp simvg_student

@@ -164,51 +164,41 @@ module hart #(
         .o_ALUop(ALUop),
         .o_lui(lui),
         .o_dmem_ren(o_dmem_ren),
+        .o_dmem_wen(o_dmem_wen),
         .o_dmem_mask(o_dmem_mask),
         .o_MemtoReg(MemtoReg),
         .o_Jump(Jump),
         .o_Branch(Branch),
         .o_retire_halt(o_retire_halt)
     );
-    assign o_dmem_wen = ~o_dmem_ren;
     
     //////////////////////////////////////////////////////////////////////////////
     // RegisterFile
     ////////////////////////////////////////////////////////////////////////////////
-    assign o_retire_inst      = i_imem_rdata;
-    assign o_retire_pc        = o_imem_raddr;
-
-    assign o_retire_rs1_raddr = i_imem_rdata[19:15]; // rs1 
-    assign o_retire_rs2_raddr = i_imem_rdata[24:20]; // rs2 
-    assign o_retire_rd_waddr  = i_imem_rdata[11:7];  // rd 
-
-    wire [31:0] rs1_rdata_from_rf;
-    wire [31:0] rs2_rdata_from_rf;
-
-    rf #(.BYPASS_EN(0)) rf (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        .i_rs1_raddr(o_retire_rs1_raddr),
-        .o_rs1_rdata(rs1_rdata_from_rf),
-        .i_rs2_raddr(o_retire_rs2_raddr),
-        .o_rs2_rdata(rs2_rdata_from_rf),
-        .i_rd_wen   (RegWrite),
-        .i_rd_waddr (o_retire_rd_waddr),
-        .i_rd_wdata (o_retire_rd_wdata)
-    );
-
-    assign o_retire_rs1_rdata = rs1_rdata_from_rf;
-    assign o_retire_rs2_rdata = rs2_rdata_from_rf;
-
-    assign o_retire_rd_wdata = 
+    assign o_retire_rs1_raddr = i_imem_rdata[19:15]; 
+    assign o_retire_rs2_raddr = i_imem_rdata[24:20]; 
+    assign o_retire_rd_waddr  = (RegWrite) ? i_imem_rdata[11:7] : 5'd0;  
+    assign o_retire_rd_wdata  = 
         (Jump) ? o_imem_raddr + 32'd4 :
                 (~MemtoReg) ? alu_result :
                             (i_imem_rdata[13]) ? i_dmem_rdata :
                                                 ((i_imem_rdata[14] & i_imem_rdata[12]) ? { 16'd0, i_dmem_rdata[15:0]} : 
-                                                    (i_imem_rdata[14] & ~i_imem_rdata[12]) ? { 24'd0, i_dmem_rdata[7:0]} : 
-                                                    (~i_imem_rdata[14] & i_imem_rdata[12]) ? {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]} : 
-                                                        {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]});
-
+                                                 (i_imem_rdata[14] & ~i_imem_rdata[12]) ? { 24'd0, i_dmem_rdata[7:0]} : 
+                                                 (~i_imem_rdata[14] & i_imem_rdata[12]) ? {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]} : 
+                                                    {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]});
+    rf #(.BYPASS_EN(0)) rf (
+        // inputs
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_rs1_raddr(o_retire_rs1_raddr),
+        .i_rs2_raddr(o_retire_rs2_raddr),
+        .i_rd_waddr (o_retire_rd_waddr),
+        .i_rd_wdata (o_retire_rd_wdata),
+        // outputs
+        .o_rs1_rdata(o_retire_rs1_rdata),
+        .o_rs2_rdata(o_retire_rs2_rdata)
+    );
+    
 
     //////////////////////////////////////////////////////////////////////////////
     // Immediate Generator
@@ -240,8 +230,8 @@ module hart #(
     wire        branch_condition;
 
     alu ALU (
-        .i_op1           (ALUSrc1 ? (lui ? 32'd0 : o_imem_raddr) : rs1_rdata_from_rf),
-        .i_op2           (ALUSrc2 ? immediate : rs2_rdata_from_rf),
+        .i_op1           (ALUSrc1 ? (lui ? 32'd0 : o_imem_raddr) : o_retire_rs1_rdata),
+        .i_op2           (ALUSrc2 ? immediate : o_retire_rs2_rdata),
         .i_opsel         (alu_ctrl),
         .i_is_bne        (is_bne),
         .o_result        (alu_result),
@@ -252,16 +242,17 @@ module hart #(
     // Memory
     //////////////////////////////////////////////////////////////////////////////
     assign o_dmem_addr  = alu_result;
-    assign o_dmem_wdata = rs2_rdata_from_rf; 
+    assign o_dmem_wdata = o_retire_rs2_rdata;
 
     //////////////////////////////////////////////////////////////////////////////
-    // PC
+    // PC and Next PC Logic
     /////////////////////////////////////////////////////////////////////////////
+    assign o_retire_inst      = i_imem_rdata;
+    assign o_retire_pc        = o_imem_raddr;
     wire [31:0] next_pc;
-    assign next_pc = 
-        (Jump) ? ((~i_imem_rdata[3]) ? {alu_result[31:1], 1'b0} : alu_result) :
-                 (Branch & branch_condition) ? (o_imem_raddr + immediate) :
-                                                (o_imem_raddr + 32'd4);
+    assign next_pc = (Jump) ? ((~i_imem_rdata[3]) ? {alu_result[31:1], 1'b0} : alu_result) :
+                              (Branch & branch_condition) ? (o_imem_raddr + immediate) :
+                                                            (o_imem_raddr + 32'd4);
     assign o_retire_next_pc = o_retire_halt ? o_imem_raddr : next_pc;
     pc PC (
         .i_clk(i_clk),
