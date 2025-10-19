@@ -135,7 +135,7 @@ module hart #(
     //////////////////////////////////////////////////////////////////////////////
     trap Trap(
         .i_inst(i_imem_rdata),
-        .i_dmem_addr(o_dmem_addr),
+        .i_dmem_addr(alu_result),
         .i_imem_addr(o_imem_raddr),
         .o_trap(o_retire_trap)
     );
@@ -152,6 +152,8 @@ module hart #(
     wire       MemtoReg;
     wire       Jump;
     wire       Branch;
+    wire [3:0] ctrl_dmem_mask;
+    
     ctrl Control (
         // inputs
         .i_inst(i_imem_rdata[31:0]),
@@ -165,7 +167,7 @@ module hart #(
         .o_lui(lui),
         .o_dmem_ren(o_dmem_ren),
         .o_dmem_wen(o_dmem_wen),
-        .o_dmem_mask(o_dmem_mask),
+        .o_dmem_mask(ctrl_dmem_mask),
         .o_MemtoReg(MemtoReg),
         .o_Jump(Jump),
         .o_Branch(Branch),
@@ -178,14 +180,7 @@ module hart #(
     assign o_retire_rs1_raddr = i_imem_rdata[19:15]; 
     assign o_retire_rs2_raddr = i_imem_rdata[24:20]; 
     assign o_retire_rd_waddr  = (RegWrite) ? i_imem_rdata[11:7] : 5'd0;  
-    assign o_retire_rd_wdata  = 
-        (Jump) ? o_imem_raddr + 32'd4 :
-                (~MemtoReg) ? alu_result :
-                            (i_imem_rdata[13]) ? i_dmem_rdata :
-                                                ((i_imem_rdata[14] & i_imem_rdata[12]) ? { 16'd0, i_dmem_rdata[15:0]} : 
-                                                 (i_imem_rdata[14] & ~i_imem_rdata[12]) ? { 24'd0, i_dmem_rdata[7:0]} : 
-                                                 (~i_imem_rdata[14] & i_imem_rdata[12]) ? {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]} : 
-                                                    {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]});
+    
     rf #(.BYPASS_EN(0)) rf (
         // inputs
         .i_clk(i_clk),
@@ -239,10 +234,80 @@ module hart #(
     );
 
     //////////////////////////////////////////////////////////////////////////////
-    // Memory
+    // Memory - Handle unaligned accesses
     //////////////////////////////////////////////////////////////////////////////
-    assign o_dmem_addr  = alu_result;
-    assign o_dmem_wdata = o_retire_rs2_rdata;
+    
+    // Calculate aligned address (clear lower 2 bits)
+    wire [31:0] aligned_addr = {alu_result[31:2], 2'b00};
+
+    // Get byte offset from address
+    wire [1:0] byte_offset = alu_result[1:0];
+
+    // Adjust mask based on address offset
+    wire [3:0] adjusted_mask;
+    assign adjusted_mask = 
+        // For byte access (SB/LB/LBU)
+        (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b000) ? (4'b0001 << byte_offset) : // SB
+        (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b000) ? (4'b0001 << byte_offset) : // LB
+        (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b100) ? (4'b0001 << byte_offset) : // LBU
+        
+        // For half-word access (SH/LH/LHU)  
+        (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b001) ? (byte_offset[1] ? 4'b1100 : 4'b0011) : // SH
+        (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b001) ? (byte_offset[1] ? 4'b1100 : 4'b0011) : // LH
+        (i_imem_rdata[6:0] == 7'b0000011 && i_imem_rdata[14:12] == 3'b101) ? (byte_offset[1] ? 4'b1100 : 4'b0011) : // LHU
+        
+        // For word access (SW/LW) - no adjustment needed
+        ctrl_dmem_mask;
+
+    // Adjust write data position (shift to correct byte lane)
+    wire [31:0] adjusted_wdata;
+    assign adjusted_wdata = 
+        // SB: shift left by byte offset
+        (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b000) ? (o_retire_rs2_rdata << (byte_offset * 8)) :
+        // SH: shift left by half-word offset
+        (i_imem_rdata[6:0] == 7'b0100011 && i_imem_rdata[14:12] == 3'b001) ? (o_retire_rs2_rdata << (byte_offset[1] * 16)) :
+        // SW: no shift needed
+        o_retire_rs2_rdata;
+
+    // Output to memory interface
+    assign o_dmem_addr  = aligned_addr;
+    assign o_dmem_wdata = adjusted_wdata;
+    assign o_dmem_mask  = adjusted_mask;
+    
+    // Extract and extend load data based on offset
+    wire [31:0] load_data;
+    assign load_data = 
+        // LW - no adjustment needed
+        (i_imem_rdata[14:12] == 3'b010) ? i_dmem_rdata :
+        
+        // LH - extract half-word and sign extend
+        (i_imem_rdata[14:12] == 3'b001) ? 
+            (byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
+                             {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
+        
+        // LHU - extract half-word and zero extend  
+        (i_imem_rdata[14:12] == 3'b101) ?
+            (byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
+                             {16'd0, i_dmem_rdata[15:0]}) :
+        
+        // LB - extract byte and sign extend
+        (i_imem_rdata[14:12] == 3'b000) ?
+            (byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
+             byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
+             byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
+                                   {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
+        
+        // LBU - extract byte and zero extend
+        (byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
+         byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
+         byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
+                               {24'd0, i_dmem_rdata[31:24]});
+    
+    // Calculate write-back data
+    assign o_retire_rd_wdata = 
+        (Jump) ? o_imem_raddr + 32'd4 :
+        (~MemtoReg) ? alu_result :
+        load_data;
 
     //////////////////////////////////////////////////////////////////////////////
     // PC and Next PC Logic
