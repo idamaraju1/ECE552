@@ -1,31 +1,44 @@
 `default_nettype none
 module trap(
     input  wire [31:0] i_inst,
-    input  wire [31:0] dmem_addr, // need to check if it's an unaligned data memory access
-    input  wire [31:0] imem_addr, // need to check if it's an unaligned instruction address on a taken branch or jump
+    input  wire [31:0] dmem_addr, // effective data address for load/store
+    input  wire [31:0] imem_addr, // branch/jump target address when taken
     output wire        o_trap
 );
+    // basic fields
     wire [6:0] opcode = i_inst[6:0];
     wire [2:0] funct3 = i_inst[14:12];
     wire [6:0] funct7 = i_inst[31:25];
 
-    // illegal opcode detection
-    wire illegal_opcode;
-    assign illegal_opcode = ~(
-        (opcode == 7'b0110011) || // R-type
-        (opcode == 7'b0010011) || // I-type Immediate arithmetic
-        (opcode == 7'b0000011) || // I-type Load
-        (opcode == 7'b0100011) || // S-type Store
-        (opcode == 7'b1100011) || // B-type Branch
-        (opcode == 7'b1101111) || // J-type JAL
-        (opcode == 7'b1100111) || // I-type JALR
-        (opcode == 7'b0110111) || // U-type LUI
-        (opcode == 7'b0010111)    // U-type AUIPC
-    );
+    // -----------------------
+    // 1) LEGAL OPCODES (+ EBREAK)
+    // -----------------------
+    // EBREAK (SYSTEM opcode, funct3=000, imm12=1, rs1=0, rd=0) -> allowed & handled elsewhere (halt)
+    wire is_system  = (opcode == 7'b1110011); // SYSTEM
+    wire is_ebreak  = is_system
+                    && (funct3 == 3'b000)
+                    && (i_inst[31:20] == 12'h001)   // imm12 = 1
+                    && (i_inst[19:15] == 5'd0)      // rs1 = x0
+                    && (i_inst[11:7]  == 5'd0);     // rd  = x0
 
-    // R-type funct3/funct7 checking: funct3 and funct7 must match valid combinations
-    wire illegal_rtype;
-    assign illegal_rtype = (opcode == 7'b0110011) && ~(
+    wire legal_opcode = (opcode == 7'b0110011) // R
+                     || (opcode == 7'b0010011) // I (arith imm)
+                     || (opcode == 7'b0000011) // I (load)
+                     || (opcode == 7'b0100011) // S (store)
+                     || (opcode == 7'b1100011) // B (branch)
+                     || (opcode == 7'b1101111) // JAL
+                     || (opcode == 7'b1100111) // JALR
+                     || (opcode == 7'b0110111) // LUI
+                     || (opcode == 7'b0010111) // AUIPC
+                     ||  is_ebreak;            // SYSTEM: EBREAK is legal (halt), not a trap
+
+    wire illegal_opcode = ~legal_opcode;
+
+    // -----------------------
+    // 2) FIELD CONSISTENCY CHECKS
+    // -----------------------
+    // R-type (funct3/funct7 combos)
+    wire illegal_rtype = (opcode == 7'b0110011) && ~(
         (funct3 == 3'b000 && (funct7 == 7'b0000000 || funct7 == 7'b0100000)) || // ADD, SUB
         (funct3 == 3'b001 && funct7 == 7'b0000000) || // SLL
         (funct3 == 3'b010 && funct7 == 7'b0000000) || // SLT
@@ -36,9 +49,8 @@ module trap(
         (funct3 == 3'b111 && funct7 == 7'b0000000)    // AND
     );
 
-    // I-type immediate arithmetic funct3/funct7 checking
-    wire illegal_itype_imm;
-    assign illegal_itype_imm = (opcode == 7'b0010011) && ~(
+    // I-type arithmetic (shift-immediates must encode upper bits as per spec)
+    wire illegal_itype_imm = (opcode == 7'b0010011) && ~(
         (funct3 == 3'b000) || // ADDI
         (funct3 == 3'b001 && funct7 == 7'b0000000) || // SLLI
         (funct3 == 3'b010) || // SLTI
@@ -49,9 +61,8 @@ module trap(
         (funct3 == 3'b111)    // ANDI
     );
 
-    // I-type load funct3 checking
-    wire illegal_itype_load;
-    assign illegal_itype_load = (opcode == 7'b0000011) && ~(
+    // I-type load funct3
+    wire illegal_itype_load = (opcode == 7'b0000011) && ~(
         (funct3 == 3'b000) || // LB
         (funct3 == 3'b001) || // LH
         (funct3 == 3'b010) || // LW
@@ -59,17 +70,15 @@ module trap(
         (funct3 == 3'b101)    // LHU
     );
 
-    // S-type store funct3 checking
-    wire illegal_stype_store;
-    assign illegal_stype_store = (opcode == 7'b0100011) && ~(
+    // S-type store funct3
+    wire illegal_stype_store = (opcode == 7'b0100011) && ~(
         (funct3 == 3'b000) || // SB
         (funct3 == 3'b001) || // SH
         (funct3 == 3'b010)    // SW
     );
 
-    // B-type branch funct3 checking
-    wire illegal_btype_branch;
-    assign illegal_btype_branch = (opcode == 7'b1100011) && ~(
+    // B-type branch funct3
+    wire illegal_btype_branch = (opcode == 7'b1100011) && ~(
         (funct3 == 3'b000) || // BEQ
         (funct3 == 3'b001) || // BNE
         (funct3 == 3'b100) || // BLT
@@ -78,16 +87,44 @@ module trap(
         (funct3 == 3'b111)    // BGEU
     );
 
-    // unaligned data memory access checking
-    wire unaligned_dmem_access;
-    assign unaligned_dmem_access = (opcode == 7'b0000011) && (dmem_addr[1:0] != 2'b00);
+    // -----------------------
+    // 3) ALIGNMENT CHECKS (WISC-F25 requires aligned accesses)
+    // -----------------------
+    wire is_load  = (opcode == 7'b0000011);
+    wire is_store = (opcode == 7'b0100011);
 
-    // unaligned instruction address on a taken branch or jump
-    wire unaligned_imem_access;
-    assign unaligned_imem_access = (imem_addr[1:0] != 2'b00);
+    // load misalign by width
+    wire mis_ld = is_load && (
+        ((funct3 == 3'b010) && (dmem_addr[1:0] != 2'b00)) || // LW
+        ((funct3 == 3'b001) && (dmem_addr[0]   != 1'b0 )) || // LH
+        ((funct3 == 3'b101) && (dmem_addr[0]   != 1'b0 ))    // LHU
+        // LB/LBU: no alignment restriction
+    );
 
-    assign o_trap = illegal_opcode 
-        || illegal_rtype || illegal_itype_imm || illegal_itype_load || illegal_stype_store || illegal_btype_branch 
-        || unaligned_dmem_access || unaligned_imem_access;
+    // store misalign by width
+    wire mis_st = is_store && (
+        ((funct3 == 3'b010) && (dmem_addr[1:0] != 2'b00)) || // SW
+        ((funct3 == 3'b001) && (dmem_addr[0]   != 1'b0 ))    // SH
+        // SB: no alignment restriction
+    );
+
+    // instruction address misalign: JAL/JALR must be aligned; branches should be checked only when taken (ensure upstream supplies the target only when taken).
+    wire is_jal  = (opcode == 7'b1101111);
+    wire is_jalr = (opcode == 7'b1100111);
+    wire mis_imem = ((is_jal | is_jalr) && (imem_addr[1:0] != 2'b00));
+    // If HART feeds imem_addr only when a branch is taken, this naturally covers B-type as well.
+
+    // -----------------------
+    // 4) FINAL TRAP
+    // -----------------------
+    assign o_trap = illegal_opcode
+                 || illegal_rtype
+                 || illegal_itype_imm
+                 || illegal_itype_load
+                 || illegal_stype_store
+                 || illegal_btype_branch
+                 || mis_ld
+                 || mis_st
+                 || mis_imem;
 endmodule
 `default_nettype wire
