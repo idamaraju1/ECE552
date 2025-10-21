@@ -57,8 +57,9 @@ module rf #(
         mem[i_rs2_raddr];
 
     // Write data (synchronous).
+    genvar i;
     generate 
-        for (genvar i = 0; i < 32; i = i + 1) begin 
+        for (i = 0; i < 32; i = i + 1) begin 
             dff reg_ff[31:0] (
                 .i_clk({32{i_clk}}), 
                 .i_rst({32{i_rst}}), 
