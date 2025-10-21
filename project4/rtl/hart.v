@@ -130,16 +130,7 @@ module hart #(
     ,`RVFI_OUTPUTS,
 `endif
 );
-    //////////////////////////////////////////////////////////////////////////////
-    // Decide if instruction is illegal (for trap signal)
-    //////////////////////////////////////////////////////////////////////////////
-    trap Trap(
-        .i_inst(i_imem_rdata),
-        .i_dmem_addr(alu_result),
-        .i_imem_addr(o_imem_raddr),
-        .o_trap(o_retire_trap)
-    );
-
+    
     ////////////////////////////////////////////////////////////////////////////////
     // Generate control signals 
     ////////////////////////////////////////////////////////////////////////////////
@@ -238,7 +229,8 @@ module hart #(
     assign o_dmem_addr = {alu_result[31:2], 2'b00};
 
     // Get byte offset from address
-    wire [1:0] byte_offset = alu_result[1:0];
+	wire [1:0] byte_offset;
+	assign byte_offset = alu_result[1:0];
 
     // Adjust mask based on address offset
     assign o_dmem_mask = 
@@ -317,6 +309,15 @@ module hart #(
         .o_retire_valid(o_retire_valid)
     );
 
+	//////////////////////////////////////////////////////////////////////////////
+    // Decide if instruction is illegal (for trap signal)
+    //////////////////////////////////////////////////////////////////////////////
+    trap Trap(
+        .i_inst(i_imem_rdata),
+        .i_dmem_addr(alu_result),
+        .i_imem_addr(o_imem_raddr),
+        .o_trap(o_retire_trap)
+    );
 
 endmodule
 
