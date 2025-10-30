@@ -28,6 +28,7 @@ module id_ex (
     input  wire        i_mem_write,
     input  wire        i_reg_write,
     input  wire        i_mem_to_reg,
+    input  wire        i_retire_halt,
     
     // Data signals to EX stage
     output reg  [31:0] o_pc,
@@ -52,7 +53,8 @@ module id_ex (
     output reg         o_mem_read,
     output reg         o_mem_write,
     output reg         o_reg_write,
-    output reg         o_mem_to_reg
+    output reg         o_mem_to_reg,
+    output reg         o_retire_halt
 );
 
     always @(posedge i_clk) begin
@@ -78,6 +80,8 @@ module id_ex (
             o_mem_write <= 1'b0;
             o_reg_write <= 1'b0;
             o_mem_to_reg <= 1'b0;
+            o_retire_halt <= 1'b0;
+            
         end else begin
             // Data signals
             o_pc <= i_pc;
@@ -103,6 +107,7 @@ module id_ex (
             o_mem_write <= i_mem_write;
             o_reg_write <= i_reg_write;
             o_mem_to_reg <= i_mem_to_reg;
+            o_retire_halt <= i_retire_halt;
         end
     end
 

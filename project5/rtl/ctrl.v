@@ -14,7 +14,7 @@ module ctrl (
     output reg        o_MemtoReg,
     output reg        o_Jump,
     output reg        o_Branch,
-    output wire        o_retire_halt
+    output wire       o_retire_halt     // only ebreak halts
 );
     always @(*) begin
         case(i_inst[6:0])
@@ -152,8 +152,8 @@ module ctrl (
         endcase
     end
 
-    // delay halt in WB stage
-    // assign o_retire_halt = (o_inst_format == 6'b000000) || i_o_retire_trap;
+    // only halt in ebreak
+    assign o_retire_halt = (o_inst_format == 6'b000000);
 
 endmodule
 `default_nettype wire

@@ -2,6 +2,7 @@
 
 module ex_mem (
     input  wire        i_clk,
+    input  wire        i_rst,
     
     // Computation results from EX stage
     input  wire [31:0] i_alu_result,
@@ -24,6 +25,7 @@ module ex_mem (
     input  wire        i_reg_write,
     input  wire        i_mem_to_reg,
     input  wire        i_jump,
+    input  wire        i_retire_halt,
     
     // Computation results to MEM stage
     output reg  [31:0] o_alu_result,
@@ -45,31 +47,53 @@ module ex_mem (
     output reg         o_mem_write,
     output reg         o_reg_write,
     output reg         o_jump,
-    output reg         o_mem_to_reg
+    output reg         o_mem_to_reg,
+    output reg         o_retire_halt
 );
 
     always @(posedge i_clk) begin
-        // Computation results
-        o_alu_result <= i_alu_result;
-        
-        // Data signals
-        o_rs1_rdata <= i_rs1_rdata;
-        o_rs2_rdata <= i_rs2_rdata;
-        o_pc <= i_pc;
-        o_pc_plus_4 <= i_pc_plus_4;
-        o_instruction <= i_instruction;
-        
-        // Address signals
-        o_rs1_addr <= i_rs1_addr;
-        o_rs2_addr <= i_rs2_addr;
-        o_rd_addr <= i_rd_addr;
-        
-        // Control signals
-        o_mem_read <= i_mem_read;
-        o_mem_write <= i_mem_write;
-        o_reg_write <= i_reg_write;
-        o_mem_to_reg <= i_mem_to_reg;
-        o_jump <= i_jump;
+        if (i_rst) begin
+            o_alu_result <= 32'h00000000;
+            o_rs1_rdata <= 32'h00000000;
+            o_rs2_rdata <= 32'h00000000;
+            o_pc <= 32'h00000000;
+            o_pc_plus_4 <= 32'h00000004;
+            o_instruction <= 32'h00000013;  // NOP
+            
+            o_rs1_addr <= 5'd0;
+            o_rs2_addr <= 5'd0;
+            o_rd_addr <= 5'd0;
+            
+            o_mem_read <= 1'b0;
+            o_mem_write <= 1'b0;
+            o_reg_write <= 1'b0;
+            o_mem_to_reg <= 1'b0;
+            o_jump <= 1'b0;
+            o_retire_halt <= 1'b0;
+        end else begin
+            // Computation results
+            o_alu_result <= i_alu_result;
+            
+            // Data signals
+            o_rs1_rdata <= i_rs1_rdata;
+            o_rs2_rdata <= i_rs2_rdata;
+            o_pc <= i_pc;
+            o_pc_plus_4 <= i_pc_plus_4;
+            o_instruction <= i_instruction;
+            
+            // Address signals
+            o_rs1_addr <= i_rs1_addr;
+            o_rs2_addr <= i_rs2_addr;
+            o_rd_addr <= i_rd_addr;
+            
+            // Control signals
+            o_mem_read <= i_mem_read;
+            o_mem_write <= i_mem_write;
+            o_reg_write <= i_reg_write;
+            o_mem_to_reg <= i_mem_to_reg;
+            o_jump <= i_jump;
+            o_retire_halt <= i_retire_halt;
+        end
     end
 
 endmodule

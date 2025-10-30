@@ -32,6 +32,7 @@ module mem_wb (
     input  wire        i_reg_write,
     input  wire        i_mem_to_reg,
     input  wire        i_jump,
+    input  wire        i_retire_halt,
     
     // Writeback data candidates to WB stage
     output reg  [31:0] o_alu_result,
@@ -60,7 +61,8 @@ module mem_wb (
     // Control signals for WB stage
     output reg         o_jump,
     output reg         o_reg_write,
-    output reg         o_mem_to_reg
+    output reg         o_mem_to_reg,
+    output reg         o_retire_halt
 );
 
     always @(posedge i_clk) begin
@@ -88,6 +90,7 @@ module mem_wb (
             o_reg_write <= 1'b0;
             o_mem_to_reg <= 1'b0;
             o_jump <= 1'b0;
+            o_retire_halt <= 1'b0;
         end else begin
             // Writeback data candidates
             o_alu_result <= i_alu_result;
@@ -117,6 +120,7 @@ module mem_wb (
             o_reg_write <= i_reg_write;
             o_mem_to_reg <= i_mem_to_reg;
             o_jump <= i_jump;
+            o_retire_halt <= i_retire_halt;
         end
     end
 
