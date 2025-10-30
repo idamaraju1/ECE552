@@ -1,3 +1,5 @@
+## Botao: Current registers don't have reset signal!!! Please add
+
 Based on the hart.v template's retire signal interface requirements and Project 5 documentation, let me **strictly** organize the signals needed for each pipeline register:
 
 ## Key Observation: What Does the Retire Interface Need?
