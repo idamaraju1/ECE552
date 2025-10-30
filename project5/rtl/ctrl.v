@@ -1,7 +1,6 @@
 `default_nettype none
 module ctrl (
     input  wire [31:0] i_inst,
-    input  wire        i_o_retire_trap, // from trap.v, only used to affect o_retire_halt
     // Output control signals:
     output reg        o_RegWrite,
     output reg [5:0]  o_inst_format,
