@@ -152,8 +152,8 @@ module ctrl (
         endcase
     end
 
-    // o_retire_halt is high when EBREAK is executed or trap is detected
-    assign o_retire_halt = (o_inst_format == 6'b000000) || i_o_retire_trap;
+    // delay halt in WB stage
+    // assign o_retire_halt = (o_inst_format == 6'b000000) || i_o_retire_trap;
 
 endmodule
 `default_nettype wire

@@ -2,6 +2,7 @@
 
 module mem_wb (
     input  wire        i_clk,
+    input  wire        i_rst,
     
     // Writeback data candidates from MEM stage
     input  wire [31:0] i_alu_result,
@@ -63,34 +64,60 @@ module mem_wb (
 );
 
     always @(posedge i_clk) begin
-        // Writeback data candidates
-        o_alu_result <= i_alu_result;
-        o_load_data <= i_load_data;
-        o_pc_plus_4 <= i_pc_plus_4;
-        
-        // Original data
-        o_rs1_rdata <= i_rs1_rdata;
-        o_rs2_rdata <= i_rs2_rdata;
-        o_pc <= i_pc;
-        o_instruction <= i_instruction;
-        
-        // Address signals
-        o_rs1_addr <= i_rs1_addr;
-        o_rs2_addr <= i_rs2_addr;
-        o_rd_addr <= i_rd_addr;
-        
-        // Data memory interface
-        o_dmem_addr <= i_dmem_addr;
-        o_dmem_mask <= i_dmem_mask;
-        o_dmem_ren <= i_dmem_ren;
-        o_dmem_wen <= i_dmem_wen;
-        o_dmem_rdata <= i_dmem_rdata;
-        o_dmem_wdata <= i_dmem_wdata;
-        
-        // Control signals
-        o_reg_write <= i_reg_write;
-        o_mem_to_reg <= i_mem_to_reg;
-        o_jump <= i_jump;
+        if (i_rst) begin
+            o_alu_result <= 32'h00000000;
+            o_load_data <= 32'h00000000;
+            o_pc_plus_4 <= 32'h00000004;
+            
+            o_rs1_rdata <= 32'h00000000;
+            o_rs2_rdata <= 32'h00000000;
+            o_pc <= 32'h00000000;
+            o_instruction <= 32'h00000013;  // NOP
+            
+            o_rs1_addr <= 5'd0;
+            o_rs2_addr <= 5'd0;
+            o_rd_addr <= 5'd0;
+            
+            o_dmem_addr <= 32'h00000000;
+            o_dmem_mask <= 4'h0;
+            o_dmem_ren <= 1'b0;
+            o_dmem_wen <= 1'b0;
+            o_dmem_rdata <= 32'h00000000;
+            o_dmem_wdata <= 32'h00000000;
+            
+            o_reg_write <= 1'b0;
+            o_mem_to_reg <= 1'b0;
+            o_jump <= 1'b0;
+        end else begin
+            // Writeback data candidates
+            o_alu_result <= i_alu_result;
+            o_load_data <= i_load_data;
+            o_pc_plus_4 <= i_pc_plus_4;
+            
+            // Original data
+            o_rs1_rdata <= i_rs1_rdata;
+            o_rs2_rdata <= i_rs2_rdata;
+            o_pc <= i_pc;
+            o_instruction <= i_instruction;
+            
+            // Address signals
+            o_rs1_addr <= i_rs1_addr;
+            o_rs2_addr <= i_rs2_addr;
+            o_rd_addr <= i_rd_addr;
+            
+            // Data memory interface
+            o_dmem_addr <= i_dmem_addr;
+            o_dmem_mask <= i_dmem_mask;
+            o_dmem_ren <= i_dmem_ren;
+            o_dmem_wen <= i_dmem_wen;
+            o_dmem_rdata <= i_dmem_rdata;
+            o_dmem_wdata <= i_dmem_wdata;
+            
+            // Control signals
+            o_reg_write <= i_reg_write;
+            o_mem_to_reg <= i_mem_to_reg;
+            o_jump <= i_jump;
+        end
     end
 
 endmodule
