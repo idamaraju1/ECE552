@@ -1,0 +1,86 @@
+`default_nettype none
+
+module id_ex (
+    input  wire        i_clk,
+    
+    // Data signals from ID stage
+    input  wire [31:0] i_pc,
+    input  wire [31:0] i_pc_plus_4,
+    input  wire [31:0] i_rs1_rdata,
+    input  wire [31:0] i_rs2_rdata,
+    input  wire [31:0] i_immediate,
+    input  wire [31:0] i_instruction,
+    
+    // Address signals from ID stage
+    input  wire [ 4:0] i_rs1_addr,
+    input  wire [ 4:0] i_rs2_addr,
+    input  wire [ 4:0] i_rd_addr,
+    
+    // Control signals from ID stage
+    input  wire        i_alu_src1,
+    input  wire        i_alu_src2,
+    input  wire [ 1:0] i_alu_op,
+    input  wire        i_lui,
+    input  wire        i_branch,
+    input  wire        i_jump,
+    input  wire        i_mem_read,
+    input  wire        i_mem_write,
+    input  wire        i_reg_write,
+    input  wire        i_mem_to_reg,
+    
+    // Data signals to EX stage
+    output reg  [31:0] o_pc,
+    output reg  [31:0] o_pc_plus_4,
+    output reg  [31:0] o_rs1_rdata,
+    output reg  [31:0] o_rs2_rdata,
+    output reg  [31:0] o_immediate,
+    output reg  [31:0] o_instruction,
+    
+    // Address signals to EX stage
+    output reg  [ 4:0] o_rs1_addr,
+    output reg  [ 4:0] o_rs2_addr,
+    output reg  [ 4:0] o_rd_addr,
+    
+    // Control signals to EX stage
+    output reg         o_alu_src1,
+    output reg         o_alu_src2,
+    output reg  [ 1:0] o_alu_op,
+    output reg         o_lui,
+    output reg         o_branch,
+    output reg         o_jump,
+    output reg         o_mem_read,
+    output reg         o_mem_write,
+    output reg         o_reg_write,
+    output reg         o_mem_to_reg
+);
+
+    always @(posedge i_clk) begin
+        // Data signals
+        o_pc <= i_pc;
+        o_pc_plus_4 <= i_pc_plus_4;
+        o_rs1_rdata <= i_rs1_rdata;
+        o_rs2_rdata <= i_rs2_rdata;
+        o_immediate <= i_immediate;
+        o_instruction <= i_instruction;
+        
+        // Address signals
+        o_rs1_addr <= i_rs1_addr;
+        o_rs2_addr <= i_rs2_addr;
+        o_rd_addr <= i_rd_addr;
+        
+        // Control signals
+        o_alu_src1 <= i_alu_src1;
+        o_alu_src2 <= i_alu_src2;
+        o_alu_op <= i_alu_op;
+        o_lui <= i_lui;
+        o_branch <= i_branch;
+        o_jump <= i_jump;
+        o_mem_read <= i_mem_read;
+        o_mem_write <= i_mem_write;
+        o_reg_write <= i_reg_write;
+        o_mem_to_reg <= i_mem_to_reg;
+    end
+
+endmodule
+
+`default_nettype wire
