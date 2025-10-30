@@ -91,7 +91,6 @@ module hart #(
     
     ctrl Control (
         .i_inst(id_instruction),
-        .i_o_retire_trap(id_retire_trap),
         .o_RegWrite(id_RegWrite),
         .o_inst_format(id_inst_format),
         .o_ALUSrc1(id_ALUSrc1),
@@ -114,7 +113,7 @@ module hart #(
     assign id_rs1_addr = id_instruction[19:15];
     assign id_rs2_addr = id_instruction[24:20];
     assign id_rd_addr = id_instruction[11:7];
-    
+    // TODO: check underneath
     // Register file (with bypassing enabled)
     wire [31:0] id_rs1_rdata;
     wire [31:0] id_rs2_rdata;
