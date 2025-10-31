@@ -20,7 +20,8 @@ module id_ex (
     // Control signals from ID stage
     input  wire        i_alu_src1,
     input  wire        i_alu_src2,
-    input  wire [ 1:0] i_alu_op,
+    input  wire        i_alu_ctrl,
+    input  wire        i_is_bne,
     input  wire        i_lui,
     input  wire        i_branch,
     input  wire        i_jump,
@@ -46,7 +47,8 @@ module id_ex (
     // Control signals to EX stage
     output reg         o_alu_src1,
     output reg         o_alu_src2,
-    output reg  [ 1:0] o_alu_op,
+    output reg         o_alu_ctrl,
+    output reg         o_is_bne,
     output reg         o_lui,
     output reg         o_branch,
     output reg         o_jump,
@@ -72,7 +74,8 @@ module id_ex (
             
             o_alu_src1 <= 1'b0;
             o_alu_src2 <= 1'b0;
-            o_alu_op <= 2'b00;
+            o_alu_ctrl <= 1'b0;
+            o_is_bne <= 1'b0;
             o_lui <= 1'b0;
             o_branch <= 1'b0;
             o_jump <= 1'b0;
@@ -99,7 +102,8 @@ module id_ex (
             // Control signals
             o_alu_src1 <= i_alu_src1;
             o_alu_src2 <= i_alu_src2;
-            o_alu_op <= i_alu_op;
+            o_alu_ctrl <= i_alu_ctrl;
+            o_is_bne <= i_is_bne;
             o_lui <= i_lui;
             o_branch <= i_branch;
             o_jump <= i_jump;

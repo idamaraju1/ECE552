@@ -113,14 +113,13 @@ module hart #(
     assign id_rs1_addr = id_instruction[19:15];
     assign id_rs2_addr = id_instruction[24:20];
     assign id_rd_addr = id_instruction[11:7];
-    // TODO: check underneath
     // Register file (with bypassing enabled)
     wire [31:0] id_rs1_rdata;
     wire [31:0] id_rs2_rdata;
     
     // Connect writeback from WB stage
     wire [31:0] wb_rd_wdata;
-    wire [4:0]  wb_rd_waddr;
+    wire [31:0] wb_rd_waddr
     wire        wb_RegWrite;
     
     rf #(.BYPASS_EN(1)) RegisterFile (
@@ -142,6 +141,18 @@ module hart #(
         .i_format(id_inst_format),
         .o_immediate(id_immediate)
     );
+
+    // ALU control
+    wire [3:0] id_alu_ctrl;
+    wire       id_is_bne;
+    
+    alu_ctrl ALU_control (
+        .i_ALUop(id_ALUop),
+        .i_funct3(id_instruction[14:12]),
+        .i_funct7_bit5(id_instruction[30]),
+        .o_alu_ctrl(id_alu_ctrl),
+        .o_is_bne(id_is_bne)
+    );
     
     ////////////////////////////////////////////////////////////////////////////////
     // ID/EX Pipeline Register
@@ -157,7 +168,8 @@ module hart #(
     wire [4:0]  ex_rd_addr;
     wire        ex_alu_src1;
     wire        ex_alu_src2;
-    wire [1:0]  ex_alu_op;
+    wire        ex_alu_ctrl;
+    wire        ex_is_bne;
     wire        ex_lui;
     wire        ex_branch;
     wire        ex_jump;
@@ -165,6 +177,7 @@ module hart #(
     wire        ex_mem_write;
     wire        ex_reg_write;
     wire        ex_mem_to_reg;
+    wire        ex_retire_halt;
     
     id_ex ID_EX (
         .i_clk(i_clk),
@@ -183,7 +196,8 @@ module hart #(
         // Control signals
         .i_alu_src1(id_ALUSrc1),
         .i_alu_src2(id_ALUSrc2),
-        .i_alu_op(id_ALUop),
+        .i_alu_ctrl(id_alu_ctrl),
+        .i_is_bne(id_is_bne),
         .i_lui(id_lui),
         .i_branch(id_Branch),
         .i_jump(id_Jump),
@@ -191,6 +205,7 @@ module hart #(
         .i_mem_write(id_dmem_wen),
         .i_reg_write(id_RegWrite),
         .i_mem_to_reg(id_MemtoReg),
+        .i_retire_halt(id_retire_halt),
         // Outputs to EX stage
         .o_pc(ex_pc),
         .o_pc_plus_4(ex_pc_plus_4),
@@ -203,31 +218,21 @@ module hart #(
         .o_rd_addr(ex_rd_addr),
         .o_alu_src1(ex_alu_src1),
         .o_alu_src2(ex_alu_src2),
-        .o_alu_op(ex_alu_op),
+        .o_alu_ctrl(ex_alu_ctrl),
+        .o_is_bne(ex_is_bne),
         .o_lui(ex_lui),
         .o_branch(ex_branch),
         .o_jump(ex_jump),
         .o_mem_read(ex_mem_read),
         .o_mem_write(ex_mem_write),
         .o_reg_write(ex_reg_write),
-        .o_mem_to_reg(ex_mem_to_reg)
+        .o_mem_to_reg(ex_mem_to_reg),
+        .o_retire_halt(ex_retire_halt)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX Stage - Execute
-    ////////////////////////////////////////////////////////////////////////////////
-    
-    // ALU control
-    wire [3:0] ex_alu_ctrl;
-    wire       ex_is_bne;
-    
-    alu_ctrl ALU_control (
-        .i_ALUop(ex_alu_op),
-        .i_funct3(ex_instruction[14:12]),
-        .i_funct7_bit5(ex_instruction[30]),
-        .o_alu_ctrl(ex_alu_ctrl),
-        .o_is_bne(ex_is_bne)
-    );
+    ////////////////////////////////////////////////////////////////////////////////    
     
     // ALU operand selection
     wire [31:0] ex_alu_op1;
@@ -250,15 +255,17 @@ module hart #(
     );
     
     // Branch/Jump logic for next PC
-    wire        ex_take_branch;
-    wire [31:0] ex_branch_target;
+    wire [31:0] ex_branch_mux;
+    wire [31:0] ex_jump_mux;
+    wire        wb_retire_halt;
     
-    assign ex_take_branch = (ex_branch & ex_branch_condition) | ex_jump;
-    assign ex_branch_target = ex_jump ? 
+    assign ex_branch_mux = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
+    assign ex_jump_mux = ex_jump ? 
                               ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
-                              (ex_pc + ex_immediate);
+                              ex_branch_mux;
     
-    assign if_next_pc = ex_take_branch ? ex_branch_target : (if_pc + 32'd4);
+    // if_next_pc[31:0] set in WB with wb_retire_halt
+    assign if_next_pc = wb_retire_halt ? if_next_pc : ex_jump_mux;
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
@@ -277,6 +284,7 @@ module hart #(
     wire        mem_reg_write;
     wire        mem_mem_to_reg;
     wire        mem_jump;
+    wire        mem_retire_halt;
     
     ex_mem EX_MEM (
         .i_clk(i_clk),
@@ -299,6 +307,7 @@ module hart #(
         .i_reg_write(ex_reg_write),
         .i_mem_to_reg(ex_mem_to_reg),
         .i_jump(ex_jump),
+        .i_retire_halt(ex_retire_halt),
         // Outputs to MEM stage
         .o_alu_result(mem_alu_result),
         .o_rs1_rdata(mem_rs1_rdata),
@@ -314,6 +323,7 @@ module hart #(
         .o_reg_write(mem_reg_write),
         .o_mem_to_reg(mem_mem_to_reg),
         .o_jump(mem_jump)
+        .o_retire_halt(mem_retire_halt)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -406,6 +416,7 @@ module hart #(
     wire        wb_dmem_wen;
     wire [31:0] wb_dmem_rdata;
     wire [31:0] wb_dmem_wdata;
+    wire        wb_retire_halt;
     
     mem_wb MEM_WB (
         .i_clk(i_clk),
@@ -434,6 +445,7 @@ module hart #(
         .i_reg_write(mem_reg_write),
         .i_mem_to_reg(mem_mem_to_reg),
         .i_jump(mem_jump),
+        .i_retire_halt(mem_retire_halt),
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
         .o_load_data(wb_load_data),
@@ -453,7 +465,8 @@ module hart #(
         .o_dmem_wdata(wb_dmem_wdata),
         .o_reg_write(wb_RegWrite),
         .o_mem_to_reg(wb_mem_to_reg),
-        .o_jump(wb_jump)
+        .o_jump(wb_jump),
+        .o_retire_halt(wb_retire_halt)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -478,40 +491,6 @@ module hart #(
     assign o_retire_rd_waddr = wb_RegWrite ? wb_rd_waddr : 5'd0;
     assign o_retire_rd_wdata = wb_rd_wdata;
     
-    // Calculate next PC for retire
-    wire        wb_retire_halt;
-    wire        wb_retire_trap;
-    
-    ctrl WB_Control (
-        .i_inst(wb_instruction),
-        .i_o_retire_trap(wb_retire_trap),
-        .o_RegWrite(),  // Not used
-        .o_inst_format(),
-        .o_ALUSrc1(),
-        .o_ALUSrc2(),
-        .o_ALUop(),
-        .o_lui(),
-        .o_dmem_ren(),
-        .o_dmem_wen(),
-        .o_MemtoReg(),
-        .o_Jump(),
-        .o_Branch(),
-        .o_retire_halt(wb_retire_halt)
-    );
-    
-    assign o_retire_halt = wb_retire_halt;
-    assign o_retire_next_pc = wb_retire_halt ? wb_pc : (wb_pc + 32'd4);
-    
-    // Trap signal
-    trap Trap(
-        .i_inst(wb_instruction),
-        .i_dmem_addr(wb_dmem_addr),
-        .i_imem_addr(wb_pc),
-        .o_trap(wb_retire_trap)
-    );
-    
-    assign o_retire_trap = wb_retire_trap;
-    
     // Connect retire_dmem signals from WB stage
     assign o_retire_dmem_addr = wb_dmem_addr;
     assign o_retire_dmem_ren = wb_dmem_ren;
@@ -519,6 +498,7 @@ module hart #(
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
     assign o_retire_dmem_rdata = wb_dmem_rdata;
+    assign o_retire_halt = wb_retire_halt;
     
 endmodule
 
