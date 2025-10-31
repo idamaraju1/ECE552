@@ -265,7 +265,7 @@ module hart #(
                               ex_branch_mux;
     
     // if_next_pc[31:0] set in WB with wb_retire_halt
-    assign if_next_pc = wb_retire_halt ? if_next_pc : ex_jump_mux;
+    assign if_next_pc = wb_retire_halt ? if_pc : ex_jump_mux;
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
@@ -498,6 +498,8 @@ module hart #(
     assign o_retire_dmem_wdata = wb_dmem_wdata;
     assign o_retire_dmem_rdata = wb_dmem_rdata;
     assign o_retire_halt = wb_retire_halt;
+    assign o_retire_next_pc = wb_pc_plus_4;
+    assign o_retire_trap = 1'b0;
     
 endmodule
 

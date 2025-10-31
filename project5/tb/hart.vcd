@@ -1,5 +1,5 @@
 $date
-	Thu Oct 30 21:04:02 2025
+	Thu Oct 30 21:14:11 2025
 $end
 $version
 	Icarus Verilog
@@ -8,22 +8,22 @@ $timescale
 	1s
 $end
 $scope module hart_tb $end
-$var wire 32 ! next_pc [31:0] $end
-$var wire 1 " trap $end
-$var wire 1 # valid $end
-$var wire 32 $ rs2_rdata [31:0] $end
-$var wire 5 % rs2_raddr [4:0] $end
-$var wire 32 & rs1_rdata [31:0] $end
-$var wire 5 ' rs1_raddr [4:0] $end
-$var wire 1 ( retire_dmem_wen $end
-$var wire 32 ) retire_dmem_wdata [31:0] $end
-$var wire 1 * retire_dmem_ren $end
-$var wire 32 + retire_dmem_rdata [31:0] $end
-$var wire 4 , retire_dmem_mask [3:0] $end
-$var wire 32 - retire_dmem_addr [31:0] $end
-$var wire 32 . rd_wdata [31:0] $end
-$var wire 5 / rd_waddr [4:0] $end
-$var wire 32 0 pc [31:0] $end
+$var wire 1 ! trap $end
+$var wire 1 " valid $end
+$var wire 32 # rs2_rdata [31:0] $end
+$var wire 5 $ rs2_raddr [4:0] $end
+$var wire 32 % rs1_rdata [31:0] $end
+$var wire 5 & rs1_raddr [4:0] $end
+$var wire 1 ' retire_dmem_wen $end
+$var wire 32 ( retire_dmem_wdata [31:0] $end
+$var wire 1 ) retire_dmem_ren $end
+$var wire 32 * retire_dmem_rdata [31:0] $end
+$var wire 4 + retire_dmem_mask [3:0] $end
+$var wire 32 , retire_dmem_addr [31:0] $end
+$var wire 32 - rd_wdata [31:0] $end
+$var wire 5 . rd_waddr [4:0] $end
+$var wire 32 / pc [31:0] $end
+$var wire 32 0 next_pc [31:0] $end
 $var wire 32 1 inst [31:0] $end
 $var wire 32 2 imem_raddr [31:0] $end
 $var wire 1 3 halt $end
@@ -53,9 +53,9 @@ $var wire 32 E o_imem_raddr [31:0] $end
 $var wire 32 F o_retire_dmem_addr [31:0] $end
 $var wire 4 G o_retire_dmem_mask [3:0] $end
 $var wire 32 H o_retire_dmem_rdata [31:0] $end
-$var wire 1 * o_retire_dmem_ren $end
+$var wire 1 ) o_retire_dmem_ren $end
 $var wire 32 I o_retire_dmem_wdata [31:0] $end
-$var wire 1 ( o_retire_dmem_wen $end
+$var wire 1 ' o_retire_dmem_wen $end
 $var wire 1 3 o_retire_halt $end
 $var wire 32 J o_retire_inst [31:0] $end
 $var wire 32 K o_retire_next_pc [31:0] $end
@@ -65,7 +65,7 @@ $var wire 5 N o_retire_rs1_raddr [4:0] $end
 $var wire 32 O o_retire_rs1_rdata [31:0] $end
 $var wire 5 P o_retire_rs2_raddr [4:0] $end
 $var wire 32 Q o_retire_rs2_rdata [31:0] $end
-$var wire 1 " o_retire_trap $end
+$var wire 1 ! o_retire_trap $end
 $var wire 32 R wb_rs2_rdata [31:0] $end
 $var wire 5 S wb_rs2_addr [4:0] $end
 $var wire 32 T wb_rs1_rdata [31:0] $end
@@ -87,7 +87,7 @@ $var wire 4 c wb_dmem_mask [3:0] $end
 $var wire 32 d wb_dmem_addr [31:0] $end
 $var wire 32 e wb_alu_result [31:0] $end
 $var wire 1 f wb_RegWrite $end
-$var wire 1 # o_retire_valid $end
+$var wire 1 " o_retire_valid $end
 $var wire 5 g o_retire_rd_waddr [4:0] $end
 $var wire 32 h mem_rs2_rdata [31:0] $end
 $var wire 5 i mem_rs2_addr [4:0] $end
@@ -365,7 +365,7 @@ $var wire 32 g# i_next_pc [31:0] $end
 $var wire 1 < i_rst $end
 $var parameter 32 h# RESET_ADDR $end
 $var reg 32 i# o_pc [31:0] $end
-$var reg 1 # o_retire_valid $end
+$var reg 1 " o_retire_valid $end
 $upscope $end
 $scope module RegisterFile $end
 $var wire 1 9 i_clk $end
@@ -10979,7 +10979,7 @@ bx O
 bx N
 bx M
 bx L
-bz K
+bx K
 bx J
 bx I
 bx H
@@ -11009,19 +11009,19 @@ bx 1
 bx 0
 bx /
 bx .
-bx00 -
-bx ,
+bx -
+bx00 ,
 bx +
-x*
-bx )
-x(
-bx '
+bx *
+x)
+bx (
+x'
 bx &
 bx %
 bx $
-1#
-z"
-bz !
+bx #
+1"
+0!
 $end
 #5
 1t#
@@ -14126,6 +14126,8 @@ b0 g"
 0^O
 0bO
 0fO
+b100 }
+b100 g#
 0h"
 1p"
 b0 \"
@@ -14146,12 +14148,10 @@ b0 o#
 b0 /"
 b0 v"
 b0 .#
-b100 }
-b100 g#
-b0 /
+b0 .
 b0 g
 b0 j#
-b0 .
+b0 -
 b0 M
 b0 W
 b0 k#
@@ -15223,33 +15223,33 @@ b10 H#
 0]
 0[
 0f
-b0 )
+b0 (
 b0 I
 b0 `
 b0 ]#
-b0 +
+b0 *
 b0 H
 b0 b
 b0 \#
-0(
+0'
 0_
-0*
+0)
 0a
-b0 ,
+b0 +
 b0 G
 b0 c
 b0 [#
-b0 -
+b0 ,
 b0 F
 b0 d
 b0 Z#
 b0 X
 b0 b#
-b0 %
+b0 $
 b0 P
 b0 S
 b0 e#
-b0 '
+b0 &
 b0 N
 b0 U
 b0 c#
@@ -15257,18 +15257,20 @@ b10011 1
 b10011 J
 b10011 ^
 b10011 ^#
-b0 0
+b0 /
 b0 L
 b0 Z
 b0 `#
-b0 $
+b0 #
 b0 Q
 b0 R
 b0 f#
-b0 &
+b0 %
 b0 O
 b0 T
 b0 d#
+b100 0
+b100 K
 b100 Y
 b100 a#
 b0 \
@@ -18493,7 +18495,7 @@ bx I#
 b0 >"
 b0 "#
 b0 <#
-b1111 ,
+b1111 +
 b1111 G
 b1111 c
 b1111 [#
@@ -22840,6 +22842,8 @@ bx j
 bx +#
 bx V#
 1f
+b0 0
+b0 K
 b0 Y
 b0 a#
 b111100000000001110010011 ;
@@ -24916,7 +24920,7 @@ b100 D"
 b1111 ,"
 b1111 7#
 b1111 J#
-bx /
+bx .
 bx g
 bx j#
 b11 z
@@ -24939,21 +24943,21 @@ b101000000000000010010011 A
 b101000000000000010010011 B#
 13
 1V
-bx )
+bx (
 bx I
 bx `
 bx ]#
-bx1 ,
+bx1 +
 bx1 G
 bx1 c
 bx1 [#
 bx X
 bx b#
-bx %
+bx $
 bx P
 bx S
 bx e#
-bx '
+bx &
 bx N
 bx U
 bx c#
@@ -24961,14 +24965,16 @@ bx 1
 bx J
 bx ^
 bx ^#
-bx $
+bx #
 bx Q
 bx R
 bx f#
-bx &
+bx %
 bx O
 bx T
 bx d#
+b100 0
+b100 K
 b100 Y
 b100 a#
 0l
@@ -27103,7 +27109,7 @@ b1111 N"
 b1111 r"
 b1111 z"
 b1000 D"
-b1111 .
+b1111 -
 b1111 M
 b1111 W
 b1111 k#
@@ -27124,7 +27130,7 @@ b1000 y
 b1000 L#
 b1000 }
 b1000 g#
-b111 /
+b111 .
 b111 g
 b111 j#
 b1100 &"
@@ -27175,25 +27181,25 @@ b1010 %#
 b1010 K#
 03
 0V
-b0 )
+b0 (
 b0 I
 b0 `
 b0 ]#
-b1111 ,
+b1111 +
 b1111 G
 b1111 c
 b1111 [#
-b1100 -
+b1100 ,
 b1100 F
 b1100 d
 b1100 Z#
 b111 X
 b111 b#
-b1111 %
+b1111 $
 b1111 P
 b1111 S
 b1111 e#
-b0 '
+b0 &
 b0 N
 b0 U
 b0 c#
@@ -27201,18 +27207,20 @@ b111100000000001110010011 1
 b111100000000001110010011 J
 b111100000000001110010011 ^
 b111100000000001110010011 ^#
-b100 0
+b100 /
 b100 L
 b100 Z
 b100 `#
-b0 $
+b0 #
 b0 Q
 b0 R
 b0 f#
-b0 &
+b0 %
 b0 O
 b0 T
 b0 d#
+b1000 0
+b1000 K
 b1000 Y
 b1000 a#
 b1111 e
