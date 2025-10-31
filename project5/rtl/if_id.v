@@ -19,7 +19,7 @@ module if_id (
         if (i_rst) begin
             o_pc <= 32'h00000000;
             o_instruction <= 32'h00000013;
-            o_pc_plus_4 <= 32'h00000000;
+            o_pc_plus_4 <= 32'h00000004;
         end else begin
             o_pc <= i_pc;
             o_instruction <= i_instruction;

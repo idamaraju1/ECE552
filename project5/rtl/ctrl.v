@@ -134,8 +134,8 @@ module ctrl (
                 o_Jump = 1'b1;
                 o_Branch = 1'b0;
             end
-            7'b1110011: begin // EBREAK
-                o_inst_format = 6'b000000;
+            7'b1110011: begin // EBREAK and other system instructions
+                o_inst_format = 6'b000010;  // Changed: treat as I-type format
                 o_RegWrite = 1'b0;
                 o_ALUSrc1 = 1'b0;
                 o_ALUSrc2 = 1'b0;
@@ -147,12 +147,33 @@ module ctrl (
                 o_Jump = 1'b0;
                 o_Branch = 1'b0;
             end
-            default: o_inst_format = 6'b000000;
+            default: begin
+                // Default case for unrecognized instructions
+                // Treat as NOP (don't write to register file, don't access memory)
+                o_inst_format = 6'b000010;  // Changed: use I-type format instead of 000000
+                o_RegWrite = 1'b0;
+                o_ALUSrc1 = 1'b0;
+                o_ALUSrc2 = 1'b0;
+                o_ALUop = 2'b10;
+                o_lui = 1'b0;
+                o_dmem_ren = 1'b0;
+                o_dmem_wen = 1'b0;
+                o_MemtoReg = 1'b0;
+                o_Jump = 1'b0;
+                o_Branch = 1'b0;
+            end
         endcase
     end
 
-    // only halt in ebreak
-    assign o_retire_halt = (o_inst_format == 6'b000000);
+    // CRITICAL FIX: Only halt on the exact EBREAK instruction encoding
+    // EBREAK is encoded as: 0x00100073
+    // - opcode[6:0] = 7'b1110011
+    // - funct3[14:12] = 3'b000  
+    // - rs1[19:15] = 5'b00000
+    // - rd[11:7] = 5'b00000
+    // - imm[31:20] = 12'h001
+    wire is_ebreak = (i_inst == 32'h00100073);
+    assign o_retire_halt = is_ebreak;
 
 endmodule
 `default_nettype wire

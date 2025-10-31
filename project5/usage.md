@@ -19,4 +19,5 @@ iverilog -g2012 \
     rtl/dff.v
 
 cd tb
+
 vvp hart_sim
