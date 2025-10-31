@@ -3,6 +3,7 @@
 module id_ex (
     input  wire        i_clk,
     input  wire        i_rst,
+    input  wire        i_flush,   // 1 = insert bubble
     
     // Data signals from ID stage
     input  wire [31:0] i_pc,
@@ -66,7 +67,7 @@ module id_ex (
             o_rs1_rdata <= 32'h00000000;
             o_rs2_rdata <= 32'h00000000;
             o_immediate <= 32'h00000000;
-            o_instruction <= 32'h00000013;  // NOP
+            o_instruction <= 32'h00000013;  // NOP, ADDI x0,x0,0
             
             o_rs1_addr <= 5'd0;
             o_rs2_addr <= 5'd0;
@@ -83,6 +84,29 @@ module id_ex (
             o_mem_write <= 1'b0;
             o_reg_write <= 1'b0;
             o_mem_to_reg <= 1'b0;
+            o_retire_halt <= 1'b0;
+        end else if (i_flush) begin
+            // bubble：all ctrl 0
+            o_pc          <= 32'h00000000;
+            o_pc_plus_4   <= 32'h00000004;
+            o_rs1_rdata   <= 32'h00000000;
+            o_rs2_rdata   <= 32'h00000000;
+            o_immediate   <= 32'h00000000;
+            o_instruction <= 32'h00000013;
+            o_rs1_addr    <= 5'd0;
+            o_rs2_addr    <= 5'd0;
+            o_rd_addr     <= 5'd0;
+            o_alu_src1    <= 1'b0;
+            o_alu_src2    <= 1'b0;
+            o_alu_ctrl    <= 4'b0000;
+            o_is_bne      <= 1'b0;
+            o_lui         <= 1'b0;
+            o_branch      <= 1'b0;
+            o_jump        <= 1'b0;
+            o_mem_read    <= 1'b0;
+            o_mem_write   <= 1'b0;
+            o_reg_write   <= 1'b0;
+            o_mem_to_reg  <= 1'b0;
             o_retire_halt <= 1'b0;
             
         end else begin

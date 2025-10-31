@@ -39,12 +39,18 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     wire [31:0] if_pc;
     wire [31:0] if_next_pc;
+
+    // Hazard detection signals (step2)
+    wire        hazard_pc_write;
+    wire        hazard_if_id_write;
+    wire        hazard_id_ex_flush;
     
     // PC register
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
         .i_next_pc(if_next_pc),
+        .i_pc_write(hazard_pc_write),
         .o_pc(if_pc),
         .o_retire_valid(o_retire_valid)
     );
@@ -62,6 +68,7 @@ module hart #(
     if_id IF_ID (
         .i_clk(i_clk),
         .i_rst(i_rst),
+        .i_write(hazard_if_id_write),
         .i_pc(if_pc),
         .i_instruction(i_imem_rdata),
         .i_pc_plus_4(if_pc + 32'd4),
@@ -182,6 +189,7 @@ module hart #(
     id_ex ID_EX (
         .i_clk(i_clk),
         .i_rst(i_rst), 
+        .i_flush(hazard_id_ex_flush),
         // Data signals
         .i_pc(id_pc),
         .i_pc_plus_4(id_pc_plus_4),
@@ -265,7 +273,7 @@ module hart #(
                               ex_branch_mux;
     
     // if_next_pc[31:0] set in WB with wb_retire_halt
-    assign if_next_pc = wb_retire_halt ? if_pc : ex_jump_mux;
+    assign if_next_pc = (wb_retire_halt || !hazard_pc_write) ? if_pc : ex_jump_mux;
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
@@ -324,6 +332,22 @@ module hart #(
         .o_mem_to_reg(mem_mem_to_reg),
         .o_jump(mem_jump),
         .o_retire_halt(mem_retire_halt)
+    );
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Hazard Detection Unit (step2)
+    ////////////////////////////////////////////////////////////////////////////////
+    hazard_unit HazardUnit (
+        .i_id_rs1(id_rs1_addr),
+        .i_id_rs2(id_rs2_addr),
+        .i_id_opcode(id_instruction[6:0]),
+        .i_ex_rd(ex_rd_addr),
+        .i_ex_reg_write(ex_reg_write),
+        .i_mem_rd(mem_rd_addr),
+        .i_mem_reg_write(mem_reg_write),
+        .o_pc_write(hazard_pc_write),
+        .o_if_id_write(hazard_if_id_write),
+        .o_id_ex_flush(hazard_id_ex_flush)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
