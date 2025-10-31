@@ -75,7 +75,7 @@ module id_ex (
             
             o_alu_src1 <= 1'b0;
             o_alu_src2 <= 1'b0;
-            o_alu_ctrl <= 1'b0;
+            o_alu_ctrl <= 4'b0000;
             o_is_bne <= 1'b0;
             o_lui <= 1'b0;
             o_branch <= 1'b0;
@@ -87,8 +87,8 @@ module id_ex (
             o_retire_halt <= 1'b0;
         end else if (i_flush) begin
             // bubble：all ctrl 0
-            o_pc          <= 32'h00000000;
-            o_pc_plus_4   <= 32'h00000004;
+            o_pc          <= i_pc;
+            o_pc_plus_4   <= i_pc_plus_4;
             o_rs1_rdata   <= 32'h00000000;
             o_rs2_rdata   <= 32'h00000000;
             o_immediate   <= 32'h00000000;
