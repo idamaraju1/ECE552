@@ -119,7 +119,7 @@ module hart #(
     
     // Connect writeback from WB stage
     wire [31:0] wb_rd_wdata;
-    wire [31:0] wb_rd_waddr
+    wire [4:0] wb_rd_waddr;
     wire        wb_RegWrite;
     
     rf #(.BYPASS_EN(1)) RegisterFile (
@@ -168,7 +168,7 @@ module hart #(
     wire [4:0]  ex_rd_addr;
     wire        ex_alu_src1;
     wire        ex_alu_src2;
-    wire        ex_alu_ctrl;
+    wire [3:0]  ex_alu_ctrl;
     wire        ex_is_bne;
     wire        ex_lui;
     wire        ex_branch;
@@ -322,7 +322,7 @@ module hart #(
         .o_mem_write(mem_mem_write),
         .o_reg_write(mem_reg_write),
         .o_mem_to_reg(mem_mem_to_reg),
-        .o_jump(mem_jump)
+        .o_jump(mem_jump),
         .o_retire_halt(mem_retire_halt)
     );
     
@@ -416,7 +416,6 @@ module hart #(
     wire        wb_dmem_wen;
     wire [31:0] wb_dmem_rdata;
     wire [31:0] wb_dmem_wdata;
-    wire        wb_retire_halt;
     
     mem_wb MEM_WB (
         .i_clk(i_clk),
