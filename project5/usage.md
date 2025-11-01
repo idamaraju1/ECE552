@@ -16,7 +16,7 @@ iverilog -g2012 \
     rtl/alu_ctrl.v \
     rtl/imm.v \
     rtl/dff.v \
-    rtl/harzard_unit.v
+    rtl/hazard_unit.v
 
 cd tb
 

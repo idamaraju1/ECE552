@@ -3,6 +3,7 @@
 module mem_wb (
     input  wire        i_clk,
     input  wire        i_rst,
+    input  wire        i_valid,
     
     // Writeback data candidates from MEM stage
     input  wire [31:0] i_alu_result,
@@ -14,6 +15,7 @@ module mem_wb (
     input  wire [31:0] i_rs2_rdata,
     input  wire [31:0] i_pc,
     input  wire [31:0] i_instruction,
+    input  wire [31:0] i_next_pc_target,
     
     // Address signals
     input  wire [ 4:0] i_rs1_addr,
@@ -44,6 +46,7 @@ module mem_wb (
     output reg  [31:0] o_rs2_rdata,
     output reg  [31:0] o_pc,
     output reg  [31:0] o_instruction,
+    output reg  [31:0] o_next_pc_target,
     
     // Address signals
     output reg  [ 4:0] o_rs1_addr,
@@ -59,6 +62,7 @@ module mem_wb (
     output reg  [31:0] o_dmem_wdata,
     
     // Control signals for WB stage
+    output reg         o_valid,
     output reg         o_jump,
     output reg         o_reg_write,
     output reg         o_mem_to_reg,
@@ -75,6 +79,7 @@ module mem_wb (
             o_rs2_rdata <= 32'h00000000;
             o_pc <= 32'h00000000;
             o_instruction <= 32'h00000013;  // NOP
+            o_next_pc_target <= 32'h00000000;
             
             o_rs1_addr <= 5'd0;
             o_rs2_addr <= 5'd0;
@@ -87,6 +92,7 @@ module mem_wb (
             o_dmem_rdata <= 32'h00000000;
             o_dmem_wdata <= 32'h00000000;
             
+            o_valid <= 1'b0;
             o_reg_write <= 1'b0;
             o_mem_to_reg <= 1'b0;
             o_jump <= 1'b0;
@@ -102,6 +108,7 @@ module mem_wb (
             o_rs2_rdata <= i_rs2_rdata;
             o_pc <= i_pc;
             o_instruction <= i_instruction;
+            o_next_pc_target <= i_next_pc_target;
             
             // Address signals
             o_rs1_addr <= i_rs1_addr;
@@ -121,6 +128,7 @@ module mem_wb (
             o_mem_to_reg <= i_mem_to_reg;
             o_jump <= i_jump;
             o_retire_halt <= i_retire_halt;
+            o_valid <= i_valid;
         end
     end
 

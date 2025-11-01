@@ -14,7 +14,8 @@ module if_id (
     // Outputs to ID stage
     output reg  [31:0] o_pc,
     output reg  [31:0] o_instruction,
-    output reg  [31:0] o_pc_plus_4
+    output reg  [31:0] o_pc_plus_4,
+    output reg         o_valid
 );
 
     always @(posedge i_clk) begin
@@ -22,14 +23,17 @@ module if_id (
             o_pc <= 32'h00000000;
             o_instruction <= 32'h00000013;
             o_pc_plus_4 <= 32'h00000004;
+            o_valid <= 1'b0;
         end else if (i_flush) begin
-            o_pc         <= i_pc;
+            o_pc         <= 32'd0;
             o_instruction<= 32'h00000013;
-            o_pc_plus_4  <= i_pc_plus_4;
+            o_pc_plus_4  <= 32'd0;
+            o_valid <= 1'b0;
         end else if (i_write) begin
             o_pc         <= i_pc;
             o_instruction<= i_instruction;
             o_pc_plus_4  <= i_pc_plus_4;
+            o_valid <= 1'b1;
         end 
     end
 

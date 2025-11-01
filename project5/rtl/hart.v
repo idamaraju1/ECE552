@@ -3,7 +3,7 @@
 module hart #(
     parameter RESET_ADDR = 32'h00000000
 ) (
-// Global clock.
+        // Global clock.
     input  wire        i_clk,
     // Synchronous active-high reset.
     input  wire        i_rst,
@@ -159,7 +159,7 @@ module hart #(
     // instructions, this is `o_retire_pc + 4`, but must be the branch or jump
     // target for *taken* branches and jumps.
     output wire [31:0] o_retire_next_pc
-    
+
 `ifdef RISCV_FORMAL
     ,`RVFI_OUTPUTS,
 `endif
@@ -182,7 +182,6 @@ module hart #(
         .i_clk(i_clk),
         .i_rst(i_rst),
         .i_next_pc(if_next_pc),
-        .i_pc_write(hazard_pc_write),
         .o_pc(if_pc)
     );
     
@@ -195,6 +194,7 @@ module hart #(
     wire [31:0] id_pc;
     wire [31:0] id_instruction;
     wire [31:0] id_pc_plus_4;
+    wire        id_valid;
     
     if_id IF_ID (
         .i_clk(i_clk),
@@ -206,7 +206,8 @@ module hart #(
         .i_pc_plus_4(if_pc + 32'd4),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
-        .o_instruction(id_instruction)
+        .o_instruction(id_instruction),
+        .o_valid(id_valid)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -317,6 +318,7 @@ module hart #(
     wire        ex_reg_write;
     wire        ex_mem_to_reg;
     wire        ex_retire_halt;
+    wire        ex_valid;
     
     id_ex ID_EX (
         .i_clk(i_clk),
@@ -346,6 +348,7 @@ module hart #(
         .i_reg_write(id_RegWrite),
         .i_mem_to_reg(id_MemtoReg),
         .i_retire_halt(id_retire_halt),
+        .i_valid(id_valid),
         // Outputs to EX stage
         .o_pc(ex_pc),
         .o_pc_plus_4(ex_pc_plus_4),
@@ -367,7 +370,9 @@ module hart #(
         .o_mem_write(ex_mem_write),
         .o_reg_write(ex_reg_write),
         .o_mem_to_reg(ex_mem_to_reg),
-        .o_retire_halt(ex_retire_halt)
+        .o_retire_halt(ex_retire_halt),
+        .o_valid(ex_valid)
+
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -399,14 +404,22 @@ module hart #(
     wire [31:0] ex_jump_mux;
     wire        wb_retire_halt;
     
-    assign ex_branch_mux = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
+    assign ex_branch_mux = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : (if_pc + 32'd4);
     assign ex_jump_mux = ex_jump ? 
                               ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
                               ex_branch_mux;
     
+
     // if_next_pc[31:0] set in WB with wb_retire_halt
-    assign if_next_pc = (wb_retire_halt || !hazard_pc_write) ? if_pc : ex_jump_mux;
+    assign if_next_pc = wb_retire_halt ? if_pc :
+                        hazard_pc_write ? ex_jump_mux :
+                        if_pc;
     
+    // propagate next_pc_target to retire target testbench
+    wire [31:0] ex_next_pc_target = ex_jump ? ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
+                                    (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
+
+
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
@@ -425,6 +438,8 @@ module hart #(
     wire        mem_mem_to_reg;
     wire        mem_jump;
     wire        mem_retire_halt;
+    wire [31:0] mem_next_pc_target;
+    wire        mem_valid;
     
     ex_mem EX_MEM (
         .i_clk(i_clk),
@@ -448,6 +463,8 @@ module hart #(
         .i_mem_to_reg(ex_mem_to_reg),
         .i_jump(ex_jump),
         .i_retire_halt(ex_retire_halt),
+        .i_next_pc_target(ex_next_pc_target),
+        .i_valid(ex_valid),
         // Outputs to MEM stage
         .o_alu_result(mem_alu_result),
         .o_rs1_rdata(mem_rs1_rdata),
@@ -463,7 +480,9 @@ module hart #(
         .o_reg_write(mem_reg_write),
         .o_mem_to_reg(mem_mem_to_reg),
         .o_jump(mem_jump),
-        .o_retire_halt(mem_retire_halt)
+        .o_retire_halt(mem_retire_halt),
+        .o_next_pc_target(mem_next_pc_target),
+        .o_valid(mem_valid)
     );
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -568,6 +587,8 @@ module hart #(
     wire [4:0]  wb_rs2_addr;
     wire        wb_jump;
     wire        wb_mem_to_reg;
+    wire [31:0] wb_next_pc_target;
+    wire        wb_valid;
     
     // Memory interface signals for retire
     wire [31:0] wb_dmem_addr;
@@ -605,6 +626,8 @@ module hart #(
         .i_mem_to_reg(mem_mem_to_reg),
         .i_jump(mem_jump),
         .i_retire_halt(mem_retire_halt),
+        .i_next_pc_target(mem_next_pc_target),
+        .i_valid(mem_valid),
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
         .o_load_data(wb_load_data),
@@ -625,7 +648,9 @@ module hart #(
         .o_reg_write(wb_RegWrite),
         .o_mem_to_reg(wb_mem_to_reg),
         .o_jump(wb_jump),
-        .o_retire_halt(wb_retire_halt)
+        .o_retire_halt(wb_retire_halt),
+        .o_next_pc_target(wb_next_pc_target),
+        .o_valid(wb_valid)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -641,13 +666,7 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // Retire Interface - Connected to WB stage outputs
     ////////////////////////////////////////////////////////////////////////////////
-    assign o_retire_valid =
-       wb_retire_halt
-    || wb_RegWrite
-    || wb_dmem_ren
-    || wb_dmem_wen
-    || wb_jump
-    || (wb_instruction[6:0] == 7'b1100011);
+    assign o_retire_valid = wb_valid;
     assign o_retire_inst = wb_instruction;
     assign o_retire_trap = 1'b0;
     assign o_retire_halt = wb_retire_halt;
@@ -665,7 +684,7 @@ module hart #(
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
     assign o_retire_dmem_rdata = wb_dmem_rdata;
-    assign o_retire_next_pc = wb_pc_plus_4;
+    assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
     
 endmodule

@@ -3,7 +3,8 @@
 module ex_mem (
     input  wire        i_clk,
     input  wire        i_rst,
-    
+    input  wire        i_valid,
+
     // Computation results from EX stage
     input  wire [31:0] i_alu_result,
     
@@ -13,6 +14,7 @@ module ex_mem (
     input  wire [31:0] i_pc,
     input  wire [31:0] i_pc_plus_4,
     input  wire [31:0] i_instruction,
+    input  wire [31:0] i_next_pc_target,
     
     // Address signals
     input  wire [ 4:0] i_rs1_addr,
@@ -36,6 +38,7 @@ module ex_mem (
     output reg  [31:0] o_pc,
     output reg  [31:0] o_pc_plus_4,
     output reg  [31:0] o_instruction,
+    output reg  [31:0] o_next_pc_target,
     
     // Address signals
     output reg  [ 4:0] o_rs1_addr,
@@ -48,7 +51,8 @@ module ex_mem (
     output reg         o_reg_write,
     output reg         o_jump,
     output reg         o_mem_to_reg,
-    output reg         o_retire_halt
+    output reg         o_retire_halt,
+    output reg         o_valid
 );
 
     always @(posedge i_clk) begin
@@ -59,6 +63,7 @@ module ex_mem (
             o_pc <= 32'h00000000;
             o_pc_plus_4 <= 32'h00000004;
             o_instruction <= 32'h00000013;  // NOP
+            o_next_pc_target <= 32'h00000000;
             
             o_rs1_addr <= 5'd0;
             o_rs2_addr <= 5'd0;
@@ -70,6 +75,7 @@ module ex_mem (
             o_mem_to_reg <= 1'b0;
             o_jump <= 1'b0;
             o_retire_halt <= 1'b0;
+            o_valid <= 1'b0;
         end else begin
             // Computation results
             o_alu_result <= i_alu_result;
@@ -80,11 +86,13 @@ module ex_mem (
             o_pc <= i_pc;
             o_pc_plus_4 <= i_pc_plus_4;
             o_instruction <= i_instruction;
-            
+            o_next_pc_target <= i_next_pc_target;
+
             // Address signals
             o_rs1_addr <= i_rs1_addr;
             o_rs2_addr <= i_rs2_addr;
             o_rd_addr <= i_rd_addr;
+            o_valid <= i_valid;
             
             // Control signals
             o_mem_read <= i_mem_read;

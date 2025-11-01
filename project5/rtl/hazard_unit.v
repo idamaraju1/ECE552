@@ -74,8 +74,8 @@ module hazard_unit (
     wire hazard_mem_rs2 = need_rs2 && (i_id_rs2 != 5'd0) && mem_will_write && (i_id_rs2 == i_mem_rd);
 
     // stall when hazard
-    // wire data_stall = hazard_ex_rs1 | hazard_ex_rs2 | hazard_mem_rs1 | hazard_mem_rs2;
-    wire data_stall = hazard_ex_rs1 | hazard_ex_rs2;  
+    wire data_stall = hazard_ex_rs1 | hazard_ex_rs2 | hazard_mem_rs1 | hazard_mem_rs2;
+    // wire data_stall = hazard_ex_rs1 | hazard_ex_rs2;  
 
     // ------------------------------------------------------------
     // 3) control hazard, when jmp and branch
@@ -83,19 +83,17 @@ module hazard_unit (
     wire ctrl_flush = i_ex_jump | (i_ex_branch & i_ex_branch_taken);
 
     // ------------------------------------------------------------
-    // 4) 合成输出（控制冒险优先于数据冒险）
+    // 4) collect output
     // ------------------------------------------------------------
-    // IF/ID：跳 → flush；没跳 → 看要不要 stall
     assign o_if_id_flush = ctrl_flush;
 
     assign o_if_id_write = ~data_stall & ~ctrl_flush;
 
-    // ID/EX：跳 → flush；否则数据冒险也要塞 bubble
     assign o_id_ex_flush = ctrl_flush | data_stall;
 
-    // PC：跳 → 必须写 PC；否则看要不要 stall
     assign o_pc_write    = ctrl_flush ? 1'b1
                                       : ~data_stall;
 
 endmodule
 `default_nettype wire
+
