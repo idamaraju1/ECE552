@@ -85,14 +85,21 @@ module hazard_unit (
     // ------------------------------------------------------------
     // 4) collect output
     // ------------------------------------------------------------
-    assign o_if_id_flush = ctrl_flush;
+    // assign o_if_id_flush = ctrl_flush;
 
-    assign o_if_id_write = ~data_stall & ~ctrl_flush;
+    // assign o_if_id_write = ~data_stall & ~ctrl_flush;
 
-    assign o_id_ex_flush = ctrl_flush | data_stall;
+    // assign o_id_ex_flush = ctrl_flush | data_stall;
 
-    assign o_pc_write    = ctrl_flush ? 1'b1
-                                      : ~data_stall;
+    // assign o_pc_write    = ctrl_flush ? 1'b1
+    //                                   : ~data_stall;
+    assign o_if_id_flush = 0;
+
+    assign o_if_id_write = 1;
+
+    assign o_id_ex_flush = 0;
+
+    assign o_pc_write    = 1;
 
 endmodule
 `default_nettype wire

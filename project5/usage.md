@@ -1,5 +1,7 @@
 cd .../ECE552/project5
 
+cd ..
+
 iverilog -g2012 \
     -o tb/hart_sim \
     -s hart_tb \

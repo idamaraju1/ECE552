@@ -25,9 +25,9 @@ module if_id (
             o_pc_plus_4 <= 32'h00000004;
             o_valid <= 1'b0;
         end else if (i_flush) begin
-            o_pc         <= 32'd0;
+            o_pc         <= i_pc;
             o_instruction<= 32'h00000013;
-            o_pc_plus_4  <= 32'd0;
+            o_pc_plus_4  <= i_pc_plus_4;
             o_valid <= 1'b0;
         end else if (i_write) begin
             o_pc         <= i_pc;
