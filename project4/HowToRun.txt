@@ -8,6 +8,7 @@ cd ../..
 # back to project4/
 
 docker run --rm -it --platform=linux/amd64 -v "$(pwd)":/src -w /src coderkalyan/ece552-tools:latest bash
+# docker run --rm -it --platform=linux/amd64 -v "${PWD}:/src" -w /src coderkalyan/ece552-tools:latest bash -> powershell
 # display root@.....:/src#
 
 ls -la
