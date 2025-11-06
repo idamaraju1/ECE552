@@ -1,8 +1,8 @@
-L0:  addi x7, x0, 0xf F D
-L1:  addi x1, x0, 10    F D X M W
+L0:  addi x7, x0, 0xf
+L1:  addi x1, x0, 10    
      nop
      nop
-L2:  addi x2, x1, 1           F D
+L2:  addi x2, x1, 1        
      nop 
      nop
 L3:  addi x3, x2, 1
