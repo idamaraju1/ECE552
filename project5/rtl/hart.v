@@ -218,7 +218,6 @@ module hart #(
     if_id IF_ID (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(1'b1),
         .i_flush(1'b0),
         .i_pc(if_pc),
         .i_instruction(i_imem_rdata),
@@ -278,7 +277,7 @@ module hart #(
     
     // Connect writeback from WB stage
     wire [31:0] wb_rd_wdata;
-    wire [4:0] wb_rd_waddr;
+    wire [4:0]  wb_rd_waddr;
     wire        wb_RegWrite;
     
     rf #(.BYPASS_EN(1)) RegisterFile (

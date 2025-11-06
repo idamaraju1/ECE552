@@ -3,7 +3,6 @@
 module if_id (
     input  wire        i_clk,
     input  wire        i_rst,
-    input  wire        i_write,         // 1 = latch, 0 = hold
     input  wire        i_flush,         // 1 = flush (insert NOP)
     
     // Inputs from IF stage
@@ -21,7 +20,7 @@ module if_id (
     always @(posedge i_clk) begin
         if (i_rst) begin
             o_pc <= 32'h00000000;
-            o_instruction <= 32'h00000013;
+            o_instruction <= 32'h00000000;
             o_pc_plus_4 <= 32'h00000004;
             o_valid <= 1'b0;
         end else if (i_flush) begin
@@ -29,7 +28,7 @@ module if_id (
             o_instruction<= 32'h00000013;
             o_pc_plus_4  <= i_pc_plus_4;
             o_valid <= 1'b0;
-        end else if (i_write) begin
+        end else begin
             o_pc         <= i_pc;
             o_instruction<= i_instruction;
             o_pc_plus_4  <= i_pc_plus_4;
