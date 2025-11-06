@@ -427,8 +427,13 @@ module hart #(
                               ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
                               ex_branch_mux;
 
-    // PC redirect signal
-    wire ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
+    // PC redirect and flush signals
+    wire ex_pc_redirect; 
+	wire flush_IF_ID; 
+	wire flush_ID_EX;
+	assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
+	assign flush_IF_ID = ex_pc_redirect;
+	assign flush_IF_ID = ex_pc_redirect;
     
     // propagate next_pc_target to retire target testbench
     wire [31:0] jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
