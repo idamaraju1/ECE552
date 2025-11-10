@@ -19,6 +19,8 @@ L6:  addi x6, x5, 1
      nop
 L7:  beq  x6, x7, L10
 L8:  lui  a0, 0xdead
+     nop
+     nop
 L9:  ebreak
 L10: lui  a0, 0x1
 L11: ebreak

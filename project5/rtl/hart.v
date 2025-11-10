@@ -3,7 +3,7 @@
 module hart #(
     parameter RESET_ADDR = 32'h00000000
 ) (
-        // Global clock.
+    // Global clock.
     input  wire        i_clk,
     // Synchronous active-high reset.
     input  wire        i_rst,
@@ -80,7 +80,7 @@ module hart #(
     // multi-cycle pipelined design, the data memory read is
     // now synchronous.
     input  wire [31:0] i_dmem_rdata,
-	// The output `retire` interface is used to signal to the testbench that
+    // The output `retire` interface is used to signal to the testbench that
     // the CPU has completed and retired an instruction. A single cycle
     // implementation will assert this every cycle; however, a pipelined
     // implementation that needs to stall (due to internal hazards or waiting
@@ -161,160 +161,53 @@ module hart #(
     output wire [31:0] o_retire_next_pc
 
 `ifdef RISCV_FORMAL
-    ,`RVFI_OUTPUTS,
+    ,`RVFI_OUTPUTS
 `endif
 );
     
     ////////////////////////////////////////////////////////////////////////////////
-    // IF Stage - Instruction Fetch
+    // ALL WIRE DECLARATIONS
     ////////////////////////////////////////////////////////////////////////////////
+    
+    // IF Stage wires
     wire [31:0] if_pc;
     wire [31:0] if_next_pc;
-
-    // Hazard detection signals (step2)
-    // wire        hazard_pc_write;
-    // wire        hazard_if_id_write;
-    // wire        hazard_if_id_flush;
-    // wire        hazard_id_ex_flush;
-
-    ////////////////////////////////////////////////////////////////////////////////
-    // Hazard Detection Unit (step2) (decode stage)
-    ////////////////////////////////////////////////////////////////////////////////
-    /*hazard_unit HazardUnit (
-        .i_id_rs1(id_rs1_addr),
-        .i_id_rs2(id_rs2_addr),
-        .i_id_opcode(id_instruction[6:0]),
-        .i_ex_rd(ex_rd_addr),
-        .i_ex_reg_write(ex_reg_write),
-        .i_ex_mem_read(ex_mem_read),
-        .o_pc_write(hazard_pc_write),
-        .o_if_id_write(hazard_if_id_write),
-        .o_id_ex_flush(hazard_id_ex_flush)
-    );*/
     
-    // PC register
-    pc PC (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        .i_write(~wb_retire_halt),  // Stop PC updates on halt, need to update for hazards
-        .i_next_pc(if_next_pc),
-        .o_pc(if_pc)
-    );
-
-    // Update PC next logic to use branch/jump target
-    assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 4);
-
-    // Connect PC to instruction memory
-    assign o_imem_raddr = if_pc;
-    
-    ////////////////////////////////////////////////////////////////////////////////
-    // IF/ID Pipeline Register
-    ////////////////////////////////////////////////////////////////////////////////
+    // IF/ID Stage wires
     wire [31:0] id_pc;
     wire [31:0] id_instruction;
     wire [31:0] id_pc_plus_4;
     wire        id_valid;
+    wire        flush_if_id;
     
-    if_id IF_ID (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        .i_flush(1'b0),
-        .i_pc(if_pc),
-        .i_instruction(i_imem_rdata),
-        .i_pc_plus_4(if_pc + 32'd4),
-        .o_pc(id_pc),
-        .o_pc_plus_4(id_pc_plus_4),
-        .o_instruction(id_instruction),
-        .o_valid(id_valid)
-    );
+    // ID Stage wires - Control signals
+    wire        id_RegWrite;
+    wire [5:0]  id_inst_format;
+    wire        id_ALUSrc1;
+    wire        id_ALUSrc2;
+    wire [1:0]  id_ALUop;
+    wire        id_lui;
+    wire        id_MemtoReg;
+    wire        id_Jump;
+    wire        id_Branch;
+    wire        id_dmem_ren;
+    wire        id_dmem_wen;
+    wire        id_retire_halt;
+    wire        id_retire_trap;
     
-    ////////////////////////////////////////////////////////////////////////////////
-    // ID Stage - Instruction Decode
-    ////////////////////////////////////////////////////////////////////////////////
-    
-    // Control signals
-    wire       id_RegWrite;
-    wire [5:0] id_inst_format;
-    wire       id_ALUSrc1;
-    wire       id_ALUSrc2;
-    wire [1:0] id_ALUop;
-    wire       id_lui;
-    wire       id_MemtoReg;
-    wire       id_Jump;
-    wire       id_Branch;
-    wire       id_dmem_ren;
-    wire       id_dmem_wen;
-    wire       id_retire_halt;
-    wire       id_retire_trap;
-    
-    ctrl Control (
-        .i_inst(id_instruction),
-        .o_RegWrite(id_RegWrite),
-        .o_inst_format(id_inst_format),
-        .o_ALUSrc1(id_ALUSrc1),
-        .o_ALUSrc2(id_ALUSrc2),
-        .o_ALUop(id_ALUop),
-        .o_lui(id_lui),
-        .o_dmem_ren(id_dmem_ren),
-        .o_dmem_wen(id_dmem_wen),
-        .o_MemtoReg(id_MemtoReg),
-        .o_Jump(id_Jump),
-        .o_Branch(id_Branch),
-        .o_retire_halt(id_retire_halt)
-    );
-    
-    // Register file addresses
-    wire [4:0] id_rs1_addr;
-    wire [4:0] id_rs2_addr;
-    wire [4:0] id_rd_addr;
-    
-    assign id_rs1_addr = id_instruction[19:15];
-    assign id_rs2_addr = id_instruction[24:20];
-    assign id_rd_addr = id_instruction[11:7];
-    // Register file (with bypassing enabled)
+    // ID Stage wires - Register file
+    wire [4:0]  id_rs1_addr;
+    wire [4:0]  id_rs2_addr;
+    wire [4:0]  id_rd_addr;
     wire [31:0] id_rs1_rdata;
     wire [31:0] id_rs2_rdata;
     
-    // Connect writeback from WB stage
-    wire [31:0] wb_rd_wdata;
-    wire [4:0]  wb_rd_waddr;
-    wire        wb_RegWrite;
-    
-    rf #(.BYPASS_EN(1)) RegisterFile (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        .i_rs1_raddr(id_rs1_addr),
-        .i_rs2_raddr(id_rs2_addr),
-        .i_rd_waddr(wb_RegWrite ? wb_rd_waddr : 5'd0),
-        .i_rd_wdata(wb_rd_wdata),
-        .o_rs1_rdata(id_rs1_rdata),
-        .o_rs2_rdata(id_rs2_rdata)
-    );
-    
-    // Immediate generator
+    // ID Stage wires - Immediate and ALU control
     wire [31:0] id_immediate;
+    wire [3:0]  id_alu_ctrl;
+    wire        id_is_bne;
     
-    imm ImmGen (
-        .i_inst(id_instruction),
-        .i_format(id_inst_format),
-        .o_immediate(id_immediate)
-    );
-
-    // ALU control
-    wire [3:0] id_alu_ctrl;
-    wire       id_is_bne;
-    
-    alu_ctrl ALU_control (
-        .i_ALUop(id_ALUop),
-        .i_funct3(id_instruction[14:12]),
-        .i_funct7_bit5(id_instruction[30]),
-        .o_alu_ctrl(id_alu_ctrl),
-        .o_is_bne(id_is_bne)
-    );
-    
-    ////////////////////////////////////////////////////////////////////////////////
-    // ID/EX Pipeline Register
-    ////////////////////////////////////////////////////////////////////////////////
+    // ID/EX Stage wires
     wire [31:0] ex_pc;
     wire [31:0] ex_pc_plus_4;
     wire [31:0] ex_rs1_rdata;
@@ -337,11 +230,187 @@ module hart #(
     wire        ex_mem_to_reg;
     wire        ex_retire_halt;
     wire        ex_valid;
+    wire        flush_id_ex;
+    
+    // EX Stage wires
+    wire [31:0] ex_alu_op1;
+    wire [31:0] ex_alu_op2;
+    wire [31:0] ex_alu_result;
+    wire        ex_branch_condition;
+    wire [31:0] ex_branch_mux;
+    wire [31:0] ex_jump_mux;
+    wire        ex_pc_redirect;
+    wire [31:0] jump_target;
+    wire [31:0] branch_target;
+    wire [31:0] ex_next_pc_target;
+    
+    // EX/MEM Stage wires
+    wire [31:0] mem_alu_result;
+    wire [31:0] mem_rs1_rdata;
+    wire [31:0] mem_rs2_rdata;
+    wire [31:0] mem_pc;
+    wire [31:0] mem_pc_plus_4;
+    wire [31:0] mem_instruction;
+    wire [4:0]  mem_rs1_addr;
+    wire [4:0]  mem_rs2_addr;
+    wire [4:0]  mem_rd_addr;
+    wire        mem_mem_read;
+    wire        mem_mem_write;
+    wire        mem_reg_write;
+    wire        mem_mem_to_reg;
+    wire        mem_jump;
+    wire        mem_retire_halt;
+    wire [31:0] mem_next_pc_target;
+    wire        mem_valid;
+    
+    // MEM Stage wires
+    wire [31:0] mem_dmem_addr_aligned;
+    wire [1:0]  mem_byte_offset;
+    wire [3:0]  mem_dmem_mask;
+    wire [31:0] mem_dmem_wdata;
+    wire [31:0] mem_load_data;
+    
+    // MEM/WB Stage wires
+    wire [31:0] wb_alu_result;
+    wire [31:0] wb_load_data;
+    wire [31:0] wb_pc_plus_4;
+    wire [31:0] wb_rs1_rdata;
+    wire [31:0] wb_rs2_rdata;
+    wire [31:0] wb_pc;
+    wire [31:0] wb_instruction;
+    wire [4:0]  wb_rs1_addr;
+    wire [4:0]  wb_rs2_addr;
+    wire [4:0]  wb_rd_waddr;
+    wire        wb_jump;
+    wire        wb_mem_to_reg;
+    wire [31:0] wb_next_pc_target;
+    wire        wb_valid;
+    wire [31:0] wb_dmem_addr;
+    wire [3:0]  wb_dmem_mask;
+    wire        wb_dmem_ren;
+    wire        wb_dmem_wen;
+    wire [31:0] wb_dmem_rdata;
+    wire [31:0] wb_dmem_wdata;
+    wire        wb_RegWrite;
+    wire [31:0] wb_rd_wdata;
+    wire        wb_retire_halt;
+
+    // ADDED
+    wire        wb_retire;
+    wire        hazard_stall;
+    wire        stall_if_id;
+    wire        stall_pc;
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // IF Stage - Instruction Fetch
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    // PC register
+    pc PC (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_write(~wb_retire_halt /*& ~stall_pc*/),  // Stop PC updates on halt
+        .i_next_pc(if_next_pc),
+        .o_pc(if_pc)
+    );
+
+    // Update PC next logic to use branch/jump target
+    assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 32'd4);
+
+    // Connect PC to instruction memory
+    assign o_imem_raddr = if_next_pc;
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    // IF/ID Pipeline Register
+    ////////////////////////////////////////////////////////////////////////////////
+    
+    if_id IF_ID (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_flush(flush_if_id),
+        .i_pc(if_pc),
+        .i_pc_plus_4(if_pc + 32'd4),
+        .i_instruction(i_imem_rdata),
+        .o_instruction(id_instruction),
+        .o_pc(id_pc),
+        .o_pc_plus_4(id_pc_plus_4),
+        .o_valid(id_valid)
+    );
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    // ID Stage - Instruction Decode
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Hazard unit
+    /* hazard_unit HZ (
+        .i_if_id_rs1(id_rs1_addr),
+        .i_if_id_rs2(id_rs2_addr),
+        .i_id_ex_rd(ex_rd_addr),
+        .i_ex_mem_rd(mem_rd_addr),
+        .o_hazard_stall(hazard_stall)
+    ); */
+
+    assign stall_pc     = hazard_stall;
+    assign stall_if_id  = hazard_stall;
+    
+    // Control unit
+    ctrl Control (
+        .i_inst(id_instruction),
+        .o_RegWrite(id_RegWrite),
+        .o_inst_format(id_inst_format),
+        .o_ALUSrc1(id_ALUSrc1),
+        .o_ALUSrc2(id_ALUSrc2),
+        .o_ALUop(id_ALUop),
+        .o_lui(id_lui),
+        .o_dmem_ren(id_dmem_ren),
+        .o_dmem_wen(id_dmem_wen),
+        .o_MemtoReg(id_MemtoReg),
+        .o_Jump(id_Jump),
+        .o_Branch(id_Branch),
+        .o_retire_halt(id_retire_halt)
+    );
+    
+    // Register file addresses
+    assign id_rs1_addr = id_instruction[19:15];
+    assign id_rs2_addr = id_instruction[24:20];
+    assign id_rd_addr = id_instruction[11:7];
+
+    // Register file (with bypassing enabled)
+    rf #(.BYPASS_EN(1)) RegisterFile (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_rs1_raddr(id_rs1_addr),
+        .i_rs2_raddr(id_rs2_addr),
+        .i_rd_waddr(wb_RegWrite ? wb_rd_waddr : 5'd0),
+        .i_rd_wdata(wb_rd_wdata),
+        .o_rs1_rdata(id_rs1_rdata),
+        .o_rs2_rdata(id_rs2_rdata)
+    );
+    
+    // Immediate generator
+    imm ImmGen (
+        .i_inst(id_instruction),
+        .i_format(id_inst_format),
+        .o_immediate(id_immediate)
+    );
+
+    // ALU control
+    alu_ctrl ALU_control (
+        .i_ALUop(id_ALUop),
+        .i_funct3(id_instruction[14:12]),
+        .i_funct7_bit5(id_instruction[30]),
+        .o_alu_ctrl(id_alu_ctrl),
+        .o_is_bne(id_is_bne)
+    );
+    
+    ////////////////////////////////////////////////////////////////////////////////
+    // ID/EX Pipeline Register
+    ////////////////////////////////////////////////////////////////////////////////
     
     id_ex ID_EX (
         .i_clk(i_clk),
         .i_rst(i_rst), 
-        .i_flush(1'b0),
+        .i_flush(flush_id_ex),
         // Data signals
         .i_pc(id_pc),
         .i_pc_plus_4(id_pc_plus_4),
@@ -390,7 +459,6 @@ module hart #(
         .o_mem_to_reg(ex_mem_to_reg),
         .o_retire_halt(ex_retire_halt),
         .o_valid(ex_valid)
-
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -398,16 +466,10 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////    
     
     // ALU operand selection
-    wire [31:0] ex_alu_op1;
-    wire [31:0] ex_alu_op2;
-    
     assign ex_alu_op1 = ex_alu_src1 ? (ex_lui ? 32'd0 : ex_pc) : ex_rs1_rdata;
     assign ex_alu_op2 = ex_alu_src2 ? ex_immediate : ex_rs2_rdata;
     
     // ALU
-    wire [31:0] ex_alu_result;
-    wire        ex_branch_condition;
-    
     alu ALU (
         .i_op1(ex_alu_op1),
         .i_op2(ex_alu_op2),
@@ -418,44 +480,24 @@ module hart #(
     );
     
     // Branch/Jump logic for next PC
-    wire [31:0] ex_branch_mux;
-    wire [31:0] ex_jump_mux;
-    wire        wb_retire_halt;
-    
     assign ex_branch_mux = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : (ex_pc + 32'd4);
     assign ex_jump_mux = ex_jump ? 
                               ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
                               ex_branch_mux;
 
-    // PC redirect signal
-    wire ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
+    // PC redirect and flush signals
+    assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
+    assign flush_if_id = ex_pc_redirect | i_rst;
+    assign flush_id_ex = ex_pc_redirect;
     
-    // propagate next_pc_target to retire target testbench
-    wire [31:0] jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
-    wire [31:0] branch_target = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
-    wire [31:0] ex_next_pc_target = ex_jump ? jump_target : branch_target;
-
+    // Propagate next_pc_target to retire target testbench
+    assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
+    assign branch_target = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
+    assign ex_next_pc_target = ex_jump ? jump_target : branch_target;
 
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
-    wire [31:0] mem_alu_result;
-    wire [31:0] mem_rs1_rdata;
-    wire [31:0] mem_rs2_rdata;
-    wire [31:0] mem_pc;
-    wire [31:0] mem_pc_plus_4;
-    wire [31:0] mem_instruction;
-    wire [4:0]  mem_rs1_addr;
-    wire [4:0]  mem_rs2_addr;
-    wire [4:0]  mem_rd_addr;
-    wire        mem_mem_read;
-    wire        mem_mem_write;
-    wire        mem_reg_write;
-    wire        mem_mem_to_reg;
-    wire        mem_jump;
-    wire        mem_retire_halt;
-    wire [31:0] mem_next_pc_target;
-    wire        mem_valid;
     
     ex_mem EX_MEM (
         .i_clk(i_clk),
@@ -506,15 +548,12 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     
     // Calculate aligned address (clear lower 2 bits)
-    wire [31:0] mem_dmem_addr_aligned;
     assign mem_dmem_addr_aligned = {mem_alu_result[31:2], 2'b00};
     
     // Get byte offset from address
-    wire [1:0] mem_byte_offset;
     assign mem_byte_offset = mem_alu_result[1:0];
     
     // Adjust mask based on address offset
-    wire [3:0] mem_dmem_mask;
     assign mem_dmem_mask = 
         // For byte access (SB/LB/LBU)
         (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (4'b0001 << mem_byte_offset) : // SB
@@ -528,7 +567,6 @@ module hart #(
         4'b1111;
     
     // Adjust write data position (shift to correct byte lane)
-    wire [31:0] mem_dmem_wdata;
     assign mem_dmem_wdata = 
         // SB: shift left by byte offset
         (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (mem_rs2_rdata << (mem_byte_offset * 8)) :
@@ -538,7 +576,6 @@ module hart #(
         mem_rs2_rdata;
     
     // Extract and extend load data based on offset
-    wire [31:0] mem_load_data;
     assign mem_load_data = 
         // LW - no adjustment needed
         (mem_instruction[14:12] == 3'b010) ? i_dmem_rdata :
@@ -572,27 +609,6 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // MEM/WB Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
-    wire [31:0] wb_alu_result;
-    wire [31:0] wb_load_data;
-    wire [31:0] wb_pc_plus_4;
-    wire [31:0] wb_rs1_rdata;
-    wire [31:0] wb_rs2_rdata;
-    wire [31:0] wb_pc;
-    wire [31:0] wb_instruction;
-    wire [4:0]  wb_rs1_addr;
-    wire [4:0]  wb_rs2_addr;
-    wire        wb_jump;
-    wire        wb_mem_to_reg;
-    wire [31:0] wb_next_pc_target;
-    wire        wb_valid;
-    
-    // Memory interface signals for retire
-    wire [31:0] wb_dmem_addr;
-    wire [3:0]  wb_dmem_mask;
-    wire        wb_dmem_ren;
-    wire        wb_dmem_wen;
-    wire [31:0] wb_dmem_rdata;
-    wire [31:0] wb_dmem_wdata;
     
     mem_wb MEM_WB (
         .i_clk(i_clk),
@@ -647,6 +663,7 @@ module hart #(
         .o_retire_halt(wb_retire_halt),
         .o_next_pc_target(wb_next_pc_target),
         .o_valid(wb_valid)
+
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -682,6 +699,21 @@ module hart #(
     assign o_retire_dmem_rdata = wb_dmem_rdata;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
+
+    // Debug output (add near the end of hart.v)
+    // Debug output (add near the end of hart.v)
+    /*
+    always @(posedge i_clk) begin
+        if (o_retire_valid) begin
+            $display("RETIRE: valid=%b PC=%h inst=%h", wb_valid, wb_pc, wb_instruction);
+        end
+    end
+
+    always @(posedge i_clk) begin
+        $display("Cycle: if_pc=%h id_pc=%h id_valid=%b ex_pc=%h ex_valid=%b mem_pc=%h mem_valid=%b wb_pc=%h wb_valid=%b flush_if_id=%b flush_id_ex=%b",
+                if_pc, id_pc, id_valid, ex_pc, ex_valid, mem_pc, mem_valid, wb_pc, wb_valid, flush_if_id, flush_id_ex);
+    end
+    */
     
 endmodule
 

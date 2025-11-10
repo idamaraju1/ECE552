@@ -66,7 +66,10 @@ module mem_wb (
     output reg         o_jump,
     output reg         o_reg_write,
     output reg         o_mem_to_reg,
-    output reg         o_retire_halt
+    output reg         o_retire_halt,
+
+    // ADDED
+    output reg         o_retire
 );
 
     always @(posedge i_clk) begin
@@ -129,6 +132,8 @@ module mem_wb (
             o_jump <= i_jump;
             o_retire_halt <= i_retire_halt;
             o_valid <= i_valid;
+
+
         end
     end
 
