@@ -230,7 +230,6 @@ module hart #(
     wire        ex_mem_to_reg;
     wire        ex_retire_halt;
     wire        ex_valid;
-    wire        flush_id_ex;
     
     // EX Stage wires
     wire [31:0] ex_alu_op1;
@@ -294,12 +293,16 @@ module hart #(
     wire        wb_RegWrite;
     wire [31:0] wb_rd_wdata;
     wire        wb_retire_halt;
+    wire [1:0]  wb_mem_byte_offset; // ADDED
 
     // ADDED
-    wire        wb_retire;
-    wire        hazard_stall;  // From hazard_unit (ENABLED)
+    wire        hazard_stall;
     wire        stall_if_id;
     wire        stall_pc;
+    wire        flush_id_ex;
+
+    reg first_cycle;
+    reg if_valid;
 
     ////////////////////////////////////////////////////////////////////////////////
     // IF Stage - Instruction Fetch
@@ -309,55 +312,30 @@ module hart #(
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(~wb_retire_halt),  // Stop PC updates on halt
-        .i_stall(stall_pc),         // Stall signal from hazard unit
+        .i_write(~wb_retire_halt),
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
 
-    reg first_cycle;
-
+    // Setup help for fetch stage on reset
     always @(posedge i_clk) begin
         if (i_rst) begin
             first_cycle <= 1'b1;
+            if_valid <= 1'b0;
         end else begin
             first_cycle <= 1'b0;
+            if_valid <= 1'b1;
         end
     end
 
+    // Update next PC to use branch/jump target, PC + 4, or reset
     assign if_next_pc =
         first_cycle       ? 32'h00000000 :
         ex_pc_redirect    ? ex_jump_mux :
                             if_pc + 32'd4;
 
-    // Update PC next logic to use branch/jump target
-    // assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 4);
-
-    // Connect PC to instruction memory
+    // Connect next PC or reset to instruction memory
     assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
-    
-    // Track the address we're actually fetching from (for correct PC labeling)
-    // Since memory is synchronous, need to delay by one cycle
-    reg [31:0] if_fetch_addr_delayed;
-    reg if_fetch_valid;  // Track if the delayed address has valid data
-    
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            if_fetch_addr_delayed <= 32'h00000000;
-            if_fetch_valid <= 1'b0;  // No valid fetch yet
-        end else if (ex_pc_redirect) begin
-            // On branch redirect, the next arriving instruction is from wrong path
-            if_fetch_valid <= 1'b0;  // Will be flushed
-        end else if (!stall_pc) begin
-            if_fetch_addr_delayed <= o_imem_raddr;  // Remember what we fetched
-            if_fetch_valid <= 1'b1;  // Will have valid data next cycle
-        end
-        // If stalled, hold both values
-    end
-
-    wire if_valid;
-    assign if_valid = if_fetch_valid;  // Valid when delayed address is valid
-
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
@@ -367,11 +345,11 @@ module hart #(
         .i_clk(i_clk),
         .i_rst(i_rst),
         .i_flush(flush_if_id),
-        .i_stall(stall_if_id),      // Stall signal from hazard unit
-        .i_pc(if_fetch_addr_delayed),  // Use delayed fetch address to match arriving instruction
-        .i_pc_plus_4(if_fetch_addr_delayed + 32'd4),
+        .i_pc(if_pc),
+        .i_pc_plus_4(if_pc + 32'd4),
         .i_instruction(i_imem_rdata),
         .i_valid(if_valid),
+        .i_write(1'b1),
         .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
@@ -382,39 +360,18 @@ module hart #(
     // ID Stage - Instruction Decode
     ////////////////////////////////////////////////////////////////////////////////
 
-    // Hazard unit - detects RAW (Read After Write) data hazards
-    // NOW ENABLED: Using actual hazard detection with valid signal checks
-    wire hazard_stall_from_unit;  // Output from hazard unit
-    
+    /*
+    // Hazard unit
     hazard_unit HZ (
-        // Source registers from IF/ID stage (instruction being decoded)
         .i_if_id_rs1(id_rs1_addr),
         .i_if_id_rs2(id_rs2_addr),
-        .i_if_id_valid(id_valid),
-        
-        // Destination register and write enable from ID/EX stage
         .i_id_ex_rd(ex_rd_addr),
-        .i_id_ex_reg_write(ex_reg_write),
-        .i_id_ex_valid(ex_valid),
-        
-        // Destination register and write enable from EX/MEM stage
         .i_ex_mem_rd(mem_rd_addr),
-        .i_ex_mem_reg_write(mem_reg_write),
-        .i_ex_mem_valid(mem_valid),
-        
-        // Destination register and write enable from MEM/WB stage
-        .i_mem_wb_rd(wb_rd_waddr),
-        .i_mem_wb_reg_write(wb_RegWrite),
-        .i_mem_wb_valid(wb_valid),
-        
-        // Stall output - now actually used!
-        .o_stall(hazard_stall_from_unit)
-    ); 
-    
-    // Connect hazard unit output to stall signal
-    assign hazard_stall = hazard_stall_from_unit;
+        .o_hazard_stall(hazard_stall)
+    );
+    */
 
-    // When hazard detected, stall PC and IF/ID register
+    // ADDED
     assign stall_pc     = hazard_stall;
     assign stall_if_id  = hazard_stall;
     
@@ -552,8 +509,8 @@ module hart #(
 
     // PC redirect and flush signals
     assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
-    assign flush_if_id = ex_pc_redirect | i_rst;
-    assign flush_id_ex = ex_pc_redirect | hazard_stall;  // Flush on redirect OR stall (insert bubble)
+    assign flush_if_id = ex_pc_redirect;
+    assign flush_id_ex = ex_pc_redirect;
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
@@ -640,30 +597,6 @@ module hart #(
         // SW: no shift needed
         mem_rs2_rdata;
     
-    // Extract and extend load data based on offset
-    assign mem_load_data = 
-        // LW - no adjustment needed
-        (mem_instruction[14:12] == 3'b010) ? i_dmem_rdata :
-        // LH - extract half-word and sign extend
-        (mem_instruction[14:12] == 3'b001) ? 
-            (mem_byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
-                                  {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
-        // LHU - extract half-word and zero extend  
-        (mem_instruction[14:12] == 3'b101) ?
-            (mem_byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
-                                  {16'd0, i_dmem_rdata[15:0]}) :
-        // LB - extract byte and sign extend
-        (mem_instruction[14:12] == 3'b000) ?
-            (mem_byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
-             mem_byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
-             mem_byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
-                                        {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
-        // LBU - extract byte and zero extend
-        (mem_byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
-         mem_byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
-         mem_byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
-                                    {24'd0, i_dmem_rdata[31:24]});
-    
     // Connect memory interface outputs
     assign o_dmem_addr = mem_dmem_addr_aligned;
     assign o_dmem_ren = mem_mem_read;
@@ -696,8 +629,8 @@ module hart #(
         .i_dmem_mask(mem_dmem_mask),
         .i_dmem_ren(mem_mem_read),
         .i_dmem_wen(mem_mem_write),
-        .i_dmem_rdata(i_dmem_rdata),
         .i_dmem_wdata(mem_dmem_wdata),
+        .i_mem_byte_offset(mem_byte_offset),
         // Control signals
         .i_reg_write(mem_reg_write),
         .i_mem_to_reg(mem_mem_to_reg),
@@ -720,20 +653,43 @@ module hart #(
         .o_dmem_mask(wb_dmem_mask),
         .o_dmem_ren(wb_dmem_ren),
         .o_dmem_wen(wb_dmem_wen),
-        .o_dmem_rdata(wb_dmem_rdata),
         .o_dmem_wdata(wb_dmem_wdata),
         .o_reg_write(wb_RegWrite),
         .o_mem_to_reg(wb_mem_to_reg),
         .o_jump(wb_jump),
         .o_retire_halt(wb_retire_halt),
         .o_next_pc_target(wb_next_pc_target),
-        .o_valid(wb_valid)
-
+        .o_valid(wb_valid),
+        .o_mem_byte_offset(wb_mem_byte_offset)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
     // WB Stage - Write Back
     ////////////////////////////////////////////////////////////////////////////////
+
+    // Extract and extend load data based on offset
+    assign wb_load_data = 
+        // LW - no adjustment needed
+        (wb_instruction[14:12] == 3'b010) ? i_dmem_rdata :
+        // LH - extract half-word and sign extend
+        (wb_instruction[14:12] == 3'b001) ? 
+            (wb_mem_byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
+                                  {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
+        // LHU - extract half-word and zero extend  
+        (wb_instruction[14:12] == 3'b101) ?
+            (wb_mem_byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
+                                  {16'd0, i_dmem_rdata[15:0]}) :
+        // LB - extract byte and sign extend
+        (wb_instruction[14:12] == 3'b000) ?
+            (wb_mem_byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
+             wb_mem_byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
+             wb_mem_byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
+                                        {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
+        // LBU - extract byte and zero extend
+        (wb_mem_byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
+         wb_mem_byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
+         wb_mem_byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
+                                    {24'd0, i_dmem_rdata[31:24]});
     
     // Calculate write-back data
     assign wb_rd_wdata = 
@@ -764,21 +720,6 @@ module hart #(
     assign o_retire_dmem_rdata = wb_dmem_rdata;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
-
-    // Debug output (add near the end of hart.v)
-    // Debug output (add near the end of hart.v)
-    /*
-    always @(posedge i_clk) begin
-        if (o_retire_valid) begin
-            $display("RETIRE: valid=%b PC=%h inst=%h", wb_valid, wb_pc, wb_instruction);
-        end
-    end
-
-    always @(posedge i_clk) begin
-        $display("Cycle: if_pc=%h id_pc=%h id_valid=%b ex_pc=%h ex_valid=%b mem_pc=%h mem_valid=%b wb_pc=%h wb_valid=%b flush_if_id=%b flush_id_ex=%b",
-                if_pc, id_pc, id_valid, ex_pc, ex_valid, mem_pc, mem_valid, wb_pc, wb_valid, flush_if_id, flush_id_ex);
-    end
-    */
     
 endmodule
 

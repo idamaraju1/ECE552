@@ -27,8 +27,8 @@ module mem_wb (
     input  wire [ 3:0] i_dmem_mask,
     input  wire        i_dmem_ren,
     input  wire        i_dmem_wen,
-    input  wire [31:0] i_dmem_rdata,
     input  wire [31:0] i_dmem_wdata,
+    input  wire [ 1:0] i_mem_byte_offset,
     
     // Control signals for WB stage
     input  wire        i_reg_write,
@@ -58,18 +58,16 @@ module mem_wb (
     output reg  [ 3:0] o_dmem_mask,
     output reg         o_dmem_ren,
     output reg         o_dmem_wen,
-    output reg  [31:0] o_dmem_rdata,
     output reg  [31:0] o_dmem_wdata,
+    output reg  [ 1:0] o_mem_byte_offset,
     
     // Control signals for WB stage
     output reg         o_valid,
     output reg         o_jump,
     output reg         o_reg_write,
     output reg         o_mem_to_reg,
-    output reg         o_retire_halt,
+    output reg         o_retire_halt
 
-    // ADDED
-    output reg         o_retire
 );
 
     always @(posedge i_clk) begin
@@ -92,8 +90,8 @@ module mem_wb (
             o_dmem_mask <= 4'h0;
             o_dmem_ren <= 1'b0;
             o_dmem_wen <= 1'b0;
-            o_dmem_rdata <= 32'h00000000;
             o_dmem_wdata <= 32'h00000000;
+            o_mem_byte_offset <= 2'b00;
             
             o_valid <= 1'b0;
             o_reg_write <= 1'b0;
@@ -123,7 +121,6 @@ module mem_wb (
             o_dmem_mask <= i_dmem_mask;
             o_dmem_ren <= i_dmem_ren;
             o_dmem_wen <= i_dmem_wen;
-            o_dmem_rdata <= i_dmem_rdata;
             o_dmem_wdata <= i_dmem_wdata;
             
             // Control signals
@@ -132,8 +129,7 @@ module mem_wb (
             o_jump <= i_jump;
             o_retire_halt <= i_retire_halt;
             o_valid <= i_valid;
-
-
+            o_mem_byte_offset <= i_mem_byte_offset;
         end
     end
 
