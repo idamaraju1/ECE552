@@ -10,6 +10,7 @@ module if_id (
     input  wire [31:0] i_pc,
     input  wire [31:0] i_instruction,
     input  wire [31:0] i_pc_plus_4,
+    input  wire        i_valid,
     
     // Outputs to ID stage
     output reg  [31:0] o_pc,
@@ -33,7 +34,7 @@ module if_id (
             o_pc         <= i_pc;
             o_instruction <= i_instruction;
             o_pc_plus_4  <= i_pc_plus_4;
-            o_valid <= 1'b1;
+            o_valid <= i_valid;
         end 
     end
 
