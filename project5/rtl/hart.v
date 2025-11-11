@@ -271,6 +271,7 @@ module hart #(
     
     // MEM/WB Stage wires
     wire [31:0] wb_alu_result;
+    wire [31:0] wb_load_data_raw;
     wire [31:0] wb_load_data;
     wire [31:0] wb_pc_plus_4;
     wire [31:0] wb_rs1_rdata;
@@ -312,7 +313,7 @@ module hart #(
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(~wb_retire_halt),
+        .i_write(~wb_retire_halt & ~stall_pc),
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
@@ -335,7 +336,7 @@ module hart #(
                             if_pc + 32'd4;
 
     // Connect next PC or reset to instruction memory
-    assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
+    assign o_imem_raddr = (first_cycle || stall_pc) ? if_pc : if_next_pc;
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
@@ -349,7 +350,7 @@ module hart #(
         .i_pc_plus_4(if_pc + 32'd4),
         .i_instruction(i_imem_rdata),
         .i_valid(if_valid),
-        .i_write(1'b1),
+        .i_write(~stall_if_id),
         .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
@@ -359,22 +360,52 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // ID Stage - Instruction Decode
     ////////////////////////////////////////////////////////////////////////////////
+    wire [6:0]  id_opcode = id_instruction[6:0];
+    wire        id_uses_rs1 =
+        (id_opcode == 7'b0110011) || // R-type
+        (id_opcode == 7'b0010011) || // I-type arithmetic
+        (id_opcode == 7'b0000011) || // Loads
+        (id_opcode == 7'b0100011) || // Stores
+        (id_opcode == 7'b1100011) || // Branches
+        (id_opcode == 7'b1100111);   // JALR
+    wire        id_uses_rs2 =
+        (id_opcode == 7'b0110011) || // R-type
+        (id_opcode == 7'b0100011) || // Stores
+        (id_opcode == 7'b1100011);   // Branches
 
-    /*
-    // Hazard unit
-    hazard_unit HZ (
-        .i_if_id_rs1(id_rs1_addr),
-        .i_if_id_rs2(id_rs2_addr),
+    wire [4:0] hazard_rs1_addr = id_uses_rs1 ? id_instruction[19:15] : 5'd0;
+    wire [4:0] hazard_rs2_addr = id_uses_rs2 ? id_instruction[24:20] : 5'd0;
+
+    hazard_unit HazardUnit (
+        // IF/ID stage source registers
+        .i_if_id_rs1(hazard_rs1_addr),
+        .i_if_id_rs2(hazard_rs2_addr),
+        .i_if_id_valid(id_valid),
+
+        // ID/EX stage destination register (from EX stage inputs)
         .i_id_ex_rd(ex_rd_addr),
+        .i_id_ex_reg_write(ex_reg_write),
+        .i_id_ex_valid(ex_valid),
+
+        // EX/MEM stage destination register (from MEM stage inputs)
         .i_ex_mem_rd(mem_rd_addr),
-        .o_hazard_stall(hazard_stall)
+        .i_ex_mem_reg_write(mem_reg_write),
+        .i_ex_mem_valid(mem_valid),
+
+        // MEM/WB stage destination register (from WB stage inputs)
+        .i_mem_wb_rd(wb_rd_waddr),
+        .i_mem_wb_reg_write(wb_RegWrite),
+        .i_mem_wb_valid(wb_valid),
+
+        // Output stall signal
+        .o_stall(hazard_stall)
     );
-    */
+
 
     // ADDED
     assign stall_pc     = hazard_stall;
     assign stall_if_id  = hazard_stall;
-    
+ 
     // Control unit
     ctrl Control (
         .i_inst(id_instruction),
@@ -510,7 +541,7 @@ module hart #(
     // PC redirect and flush signals
     assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
     assign flush_if_id = ex_pc_redirect;
-    assign flush_id_ex = ex_pc_redirect;
+    assign flush_id_ex = ex_pc_redirect | hazard_stall;
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
@@ -603,6 +634,7 @@ module hart #(
     assign o_dmem_wen = mem_mem_write;
     assign o_dmem_mask = mem_dmem_mask;
     assign o_dmem_wdata = mem_dmem_wdata;
+    assign mem_load_data = i_dmem_rdata;
     
     ////////////////////////////////////////////////////////////////////////////////
     // MEM/WB Pipeline Register
@@ -640,7 +672,7 @@ module hart #(
         .i_valid(mem_valid),
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
-        .o_load_data(wb_load_data),
+        .o_load_data(wb_load_data_raw),
         .o_pc_plus_4(wb_pc_plus_4),
         .o_rs1_rdata(wb_rs1_rdata),
         .o_rs2_rdata(wb_rs2_rdata),
@@ -670,26 +702,26 @@ module hart #(
     // Extract and extend load data based on offset
     assign wb_load_data = 
         // LW - no adjustment needed
-        (wb_instruction[14:12] == 3'b010) ? i_dmem_rdata :
+        (wb_instruction[14:12] == 3'b010) ? wb_load_data_raw :
         // LH - extract half-word and sign extend
         (wb_instruction[14:12] == 3'b001) ? 
-            (wb_mem_byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
-                                  {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
+            (wb_mem_byte_offset[1] ? {{16{wb_load_data_raw[31]}}, wb_load_data_raw[31:16]} :
+                                  {{16{wb_load_data_raw[15]}}, wb_load_data_raw[15:0]}) :
         // LHU - extract half-word and zero extend  
         (wb_instruction[14:12] == 3'b101) ?
-            (wb_mem_byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
-                                  {16'd0, i_dmem_rdata[15:0]}) :
+            (wb_mem_byte_offset[1] ? {16'd0, wb_load_data_raw[31:16]} :
+                                  {16'd0, wb_load_data_raw[15:0]}) :
         // LB - extract byte and sign extend
         (wb_instruction[14:12] == 3'b000) ?
-            (wb_mem_byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
-             wb_mem_byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
-             wb_mem_byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
-                                        {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
+            (wb_mem_byte_offset == 2'b00 ? {{24{wb_load_data_raw[7]}}, wb_load_data_raw[7:0]} :
+             wb_mem_byte_offset == 2'b01 ? {{24{wb_load_data_raw[15]}}, wb_load_data_raw[15:8]} :
+             wb_mem_byte_offset == 2'b10 ? {{24{wb_load_data_raw[23]}}, wb_load_data_raw[23:16]} :
+                                        {{24{wb_load_data_raw[31]}}, wb_load_data_raw[31:24]}) :
         // LBU - extract byte and zero extend
-        (wb_mem_byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
-         wb_mem_byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
-         wb_mem_byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
-                                    {24'd0, i_dmem_rdata[31:24]});
+        (wb_mem_byte_offset == 2'b00 ? {24'd0, wb_load_data_raw[7:0]} :
+         wb_mem_byte_offset == 2'b01 ? {24'd0, wb_load_data_raw[15:8]} :
+         wb_mem_byte_offset == 2'b10 ? {24'd0, wb_load_data_raw[23:16]} :
+                                    {24'd0, wb_load_data_raw[31:24]});
     
     // Calculate write-back data
     assign wb_rd_wdata = 
@@ -717,6 +749,7 @@ module hart #(
     assign o_retire_dmem_wen = wb_dmem_wen;
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
+    assign wb_dmem_rdata = wb_load_data_raw;
     assign o_retire_dmem_rdata = wb_dmem_rdata;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
