@@ -297,7 +297,7 @@ module hart #(
 
     // ADDED
     wire        wb_retire;
-    wire        hazard_stall;  // From hazard_unit
+    wire        hazard_stall;  // From hazard_unit (ENABLED)
     wire        stall_if_id;
     wire        stall_pc;
 
@@ -383,30 +383,36 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
 
     // Hazard unit - detects RAW (Read After Write) data hazards
-    // DISABLED FOR DEBUGGING
-    /* hazard_unit HZ (
+    // NOW ENABLED: Using actual hazard detection with valid signal checks
+    wire hazard_stall_from_unit;  // Output from hazard unit
+    
+    hazard_unit HZ (
         // Source registers from IF/ID stage (instruction being decoded)
         .i_if_id_rs1(id_rs1_addr),
         .i_if_id_rs2(id_rs2_addr),
+        .i_if_id_valid(id_valid),
         
         // Destination register and write enable from ID/EX stage
         .i_id_ex_rd(ex_rd_addr),
         .i_id_ex_reg_write(ex_reg_write),
+        .i_id_ex_valid(ex_valid),
         
         // Destination register and write enable from EX/MEM stage
         .i_ex_mem_rd(mem_rd_addr),
         .i_ex_mem_reg_write(mem_reg_write),
+        .i_ex_mem_valid(mem_valid),
         
         // Destination register and write enable from MEM/WB stage
         .i_mem_wb_rd(wb_rd_waddr),
         .i_mem_wb_reg_write(wb_RegWrite),
+        .i_mem_wb_valid(wb_valid),
         
-        // Stall output - asserted when hazard detected
-        .o_stall(hazard_stall)
-    ); */
+        // Stall output - now actually used!
+        .o_stall(hazard_stall_from_unit)
+    ); 
     
-    // DISABLED: No stalls for now
-    assign hazard_stall = 1'b0;
+    // Connect hazard unit output to stall signal
+    assign hazard_stall = hazard_stall_from_unit;
 
     // When hazard detected, stall PC and IF/ID register
     assign stall_pc     = hazard_stall;
@@ -547,7 +553,7 @@ module hart #(
     // PC redirect and flush signals
     assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
     assign flush_if_id = ex_pc_redirect | i_rst;
-    assign flush_id_ex = ex_pc_redirect;  // Hazard_stall disabled for debugging
+    assign flush_id_ex = ex_pc_redirect | hazard_stall;  // Flush on redirect OR stall (insert bubble)
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
