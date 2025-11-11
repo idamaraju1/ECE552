@@ -5,6 +5,7 @@ module if_id (
     input  wire        i_rst,
     input  wire        i_flush,         // 1 = flush (insert NOP)
     // input  wire        i_stall,         // 1 = stall (hold current values)
+    input  wire        i_valid,
     
     // Inputs from IF stage
     input  wire [31:0] i_pc,
@@ -17,6 +18,8 @@ module if_id (
     output reg  [31:0] o_pc_plus_4,
     output reg         o_valid
 );
+
+    // reg first_cycle;
 
     always @(posedge i_clk) begin
         if (i_rst) begin
@@ -33,7 +36,7 @@ module if_id (
             o_pc         <= i_pc;
             o_instruction <= i_instruction;
             o_pc_plus_4  <= i_pc_plus_4;
-            o_valid <= 1'b1;
+            o_valid <= i_valid;
         end 
     end
 

@@ -315,35 +315,26 @@ module hart #(
     );
 
     reg first_cycle;
+    reg if_valid;
 
     always @(posedge i_clk) begin
         if (i_rst) begin
             first_cycle <= 1'b1;
+            if_valid <= 1'b0;
         end else begin
             first_cycle <= 1'b0;
+            if_valid <= 1'b1;
         end
     end
 
+    // Update PC next logic to use branch/jump target
     assign if_next_pc =
         first_cycle       ? 32'h00000000 :
         ex_pc_redirect    ? ex_jump_mux :
                             if_pc + 32'd4;
 
-    // Update PC next logic to use branch/jump target
-    // assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 4);
-
     // Connect PC to instruction memory
     assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
-
-    reg if_valid;
-
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            if_valid <= 1'b0;
-        end else begin
-            if_valid <= 1'b1;   // after 1 cycle, instruction is real
-        end
-    end
 
     
     ////////////////////////////////////////////////////////////////////////////////
