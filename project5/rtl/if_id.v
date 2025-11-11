@@ -4,7 +4,7 @@ module if_id (
     input  wire        i_clk,
     input  wire        i_rst,
     input  wire        i_flush,         // 1 = flush (insert NOP)
-    // input  wire        i_stall,         // 1 = stall (hold current values)
+    input  wire        i_stall,         // 1 = stall (hold current values)
     
     // Inputs from IF stage
     input  wire [31:0] i_pc,
@@ -30,6 +30,12 @@ module if_id (
             o_instruction <= 32'h00000013;
             o_pc_plus_4  <= 32'h00000004;
             o_valid <= 1'b0;
+        end else if (i_stall) begin
+            // Hold current values when stalled
+            o_pc         <= o_pc;
+            o_instruction <= o_instruction;
+            o_pc_plus_4  <= o_pc_plus_4;
+            o_valid <= o_valid;
         end else begin
             o_pc         <= i_pc;
             o_instruction <= i_instruction;

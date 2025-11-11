@@ -297,7 +297,7 @@ module hart #(
 
     // ADDED
     wire        wb_retire;
-    wire        hazard_stall;
+    wire        hazard_stall;  // From hazard_unit
     wire        stall_if_id;
     wire        stall_pc;
 
@@ -310,6 +310,7 @@ module hart #(
         .i_clk(i_clk),
         .i_rst(i_rst),
         .i_write(~wb_retire_halt),  // Stop PC updates on halt
+        .i_stall(stall_pc),         // Stall signal from hazard unit
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
@@ -334,16 +335,28 @@ module hart #(
 
     // Connect PC to instruction memory
     assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
-
-    reg if_valid;
-
+    
+    // Track the address we're actually fetching from (for correct PC labeling)
+    // Since memory is synchronous, need to delay by one cycle
+    reg [31:0] if_fetch_addr_delayed;
+    reg if_fetch_valid;  // Track if the delayed address has valid data
+    
     always @(posedge i_clk) begin
         if (i_rst) begin
-            if_valid <= 1'b0;
-        end else begin
-            if_valid <= 1'b1;   // after 1 cycle, instruction is real
+            if_fetch_addr_delayed <= 32'h00000000;
+            if_fetch_valid <= 1'b0;  // No valid fetch yet
+        end else if (ex_pc_redirect) begin
+            // On branch redirect, the next arriving instruction is from wrong path
+            if_fetch_valid <= 1'b0;  // Will be flushed
+        end else if (!stall_pc) begin
+            if_fetch_addr_delayed <= o_imem_raddr;  // Remember what we fetched
+            if_fetch_valid <= 1'b1;  // Will have valid data next cycle
         end
+        // If stalled, hold both values
     end
+
+    wire if_valid;
+    assign if_valid = if_fetch_valid;  // Valid when delayed address is valid
 
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -354,8 +367,9 @@ module hart #(
         .i_clk(i_clk),
         .i_rst(i_rst),
         .i_flush(flush_if_id),
-        .i_pc(if_pc),
-        .i_pc_plus_4(if_pc + 32'd4),
+        .i_stall(stall_if_id),      // Stall signal from hazard unit
+        .i_pc(if_fetch_addr_delayed),  // Use delayed fetch address to match arriving instruction
+        .i_pc_plus_4(if_fetch_addr_delayed + 32'd4),
         .i_instruction(i_imem_rdata),
         .i_valid(if_valid),
         .o_instruction(id_instruction),
@@ -368,15 +382,33 @@ module hart #(
     // ID Stage - Instruction Decode
     ////////////////////////////////////////////////////////////////////////////////
 
-    // Hazard unit
+    // Hazard unit - detects RAW (Read After Write) data hazards
+    // DISABLED FOR DEBUGGING
     /* hazard_unit HZ (
+        // Source registers from IF/ID stage (instruction being decoded)
         .i_if_id_rs1(id_rs1_addr),
         .i_if_id_rs2(id_rs2_addr),
+        
+        // Destination register and write enable from ID/EX stage
         .i_id_ex_rd(ex_rd_addr),
+        .i_id_ex_reg_write(ex_reg_write),
+        
+        // Destination register and write enable from EX/MEM stage
         .i_ex_mem_rd(mem_rd_addr),
-        .o_hazard_stall(hazard_stall)
+        .i_ex_mem_reg_write(mem_reg_write),
+        
+        // Destination register and write enable from MEM/WB stage
+        .i_mem_wb_rd(wb_rd_waddr),
+        .i_mem_wb_reg_write(wb_RegWrite),
+        
+        // Stall output - asserted when hazard detected
+        .o_stall(hazard_stall)
     ); */
+    
+    // DISABLED: No stalls for now
+    assign hazard_stall = 1'b0;
 
+    // When hazard detected, stall PC and IF/ID register
     assign stall_pc     = hazard_stall;
     assign stall_if_id  = hazard_stall;
     
@@ -515,7 +547,7 @@ module hart #(
     // PC redirect and flush signals
     assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
     assign flush_if_id = ex_pc_redirect | i_rst;
-    assign flush_id_ex = ex_pc_redirect;
+    assign flush_id_ex = ex_pc_redirect;  // Hazard_stall disabled for debugging
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
