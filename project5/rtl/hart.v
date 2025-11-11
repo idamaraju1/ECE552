@@ -309,16 +309,42 @@ module hart #(
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(~wb_retire_halt /*& ~stall_pc*/),  // Stop PC updates on halt
+        .i_write(~wb_retire_halt),  // Stop PC updates on halt
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
 
+    reg first_cycle;
+
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            first_cycle <= 1'b1;
+        end else begin
+            first_cycle <= 1'b0;
+        end
+    end
+
+    assign if_next_pc =
+        first_cycle       ? 32'h00000000 :
+        ex_pc_redirect    ? ex_jump_mux :
+                            if_pc + 32'd4;
+
     // Update PC next logic to use branch/jump target
-    assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 32'd4);
+    // assign if_next_pc = ex_pc_redirect ? ex_jump_mux : (if_pc + 4);
 
     // Connect PC to instruction memory
-    assign o_imem_raddr = if_next_pc;
+    assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
+
+    reg if_valid;
+
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            if_valid <= 1'b0;
+        end else begin
+            if_valid <= 1'b1;   // after 1 cycle, instruction is real
+        end
+    end
+
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
@@ -331,6 +357,7 @@ module hart #(
         .i_pc(if_pc),
         .i_pc_plus_4(if_pc + 32'd4),
         .i_instruction(i_imem_rdata),
+        .i_valid(if_valid),
         .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
