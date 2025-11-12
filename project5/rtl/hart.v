@@ -245,8 +245,6 @@ module hart #(
     
     // EX/MEM Stage wires
     wire [31:0] mem_alu_result;
-    wire [31:0] mem_rs1_rdata;
-    wire [31:0] mem_rs2_rdata;
     wire [31:0] mem_pc;
     wire [31:0] mem_pc_plus_4;
     wire [31:0] mem_instruction;
@@ -273,8 +271,6 @@ module hart #(
     wire [31:0] wb_alu_result;
     wire [31:0] wb_load_data;
     wire [31:0] wb_pc_plus_4;
-    wire [31:0] wb_rs1_rdata;
-    wire [31:0] wb_rs2_rdata;
     wire [31:0] wb_pc;
     wire [31:0] wb_instruction;
     wire [4:0]  wb_rs1_addr;
@@ -295,7 +291,7 @@ module hart #(
     wire        wb_retire_halt;
     wire [1:0]  wb_mem_byte_offset; // ADDED
 
-    // ADDED
+    // ADDED for hazards, forwarding, and reset initialization
     wire        hazard_stall;
     wire        stall_if_id;
     wire        stall_pc;
@@ -303,16 +299,36 @@ module hart #(
 
     reg first_cycle;
     reg if_valid;
+    wire pc_write_enable;
+
+    wire [1:0] forward_a;
+    wire [1:0] forward_b;
+
+    wire [31:0] mem_forward_data;
+    wire [31:0] wb_forward_data;
+
+    wire [31:0] forward_rs1_data;
+    wire [31:0] forward_rs2_data;
+
+    wire [31:0] ex_rs1_fwd_data;
+    wire [31:0] ex_rs2_fwd_data;
+    wire [31:0] mem_rs1_fwd_data;
+    wire [31:0] mem_rs2_fwd_data;
+    wire [31:0] wb_rs1_fwd_data;
+    wire [31:0] wb_rs2_fwd_data;
 
     ////////////////////////////////////////////////////////////////////////////////
     // IF Stage - Instruction Fetch
     ////////////////////////////////////////////////////////////////////////////////
+
+    // Latch PC if not stalled or halted
+    assign pc_write_enable = ~wb_retire_halt & ~stall_pc;
     
     // PC register
     pc PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(~wb_retire_halt),
+        .i_write(pc_write_enable),
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
@@ -334,8 +350,10 @@ module hart #(
         ex_pc_redirect    ? ex_jump_mux :
                             if_pc + 32'd4;
 
-    // Connect next PC or reset to instruction memory
-    assign o_imem_raddr = first_cycle ? if_pc : if_next_pc;
+    // Connect next PC, reset, or stall to instruction memory
+    assign o_imem_raddr = stall_pc ? if_pc : 
+                        first_cycle ? if_pc : 
+                        if_next_pc;
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
@@ -349,7 +367,7 @@ module hart #(
         .i_pc_plus_4(if_pc + 32'd4),
         .i_instruction(i_imem_rdata),
         .i_valid(if_valid),
-        .i_write(1'b1),
+        .i_stall(stall_if_id),
         .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
@@ -360,18 +378,17 @@ module hart #(
     // ID Stage - Instruction Decode
     ////////////////////////////////////////////////////////////////////////////////
 
-    /*
     // Hazard unit
     hazard_unit HZ (
-        .i_if_id_rs1(id_rs1_addr),
-        .i_if_id_rs2(id_rs2_addr),
-        .i_id_ex_rd(ex_rd_addr),
-        .i_ex_mem_rd(mem_rd_addr),
+        .i_mem_read_ex(ex_mem_read),
+        .i_valid_ex(ex_valid),
+        .i_ex_rd(ex_rd_addr),
+        .i_id_rs1(id_rs1_addr),
+        .i_id_rs2(id_rs2_addr),
         .o_hazard_stall(hazard_stall)
     );
-    */
 
-    // ADDED
+    // ADDED for hazard stall
     assign stall_pc     = hazard_stall;
     assign stall_if_id  = hazard_stall;
     
@@ -485,11 +502,43 @@ module hart #(
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX Stage - Execute
-    ////////////////////////////////////////////////////////////////////////////////    
+    //////////////////////////////////////////////////////////////////////////////// 
+
+    // Forwarding unit
+    forward_unit FU (
+        .i_ex_rs1(ex_rs1_addr),
+        .i_ex_rs2(ex_rs2_addr),
+        .i_mem_reg_write(mem_reg_write),
+        .i_mem_rd(mem_rd_addr),
+        .i_wb_reg_write(wb_RegWrite),
+        .i_wb_rd(wb_rd_waddr),
+        .o_forward_a(forward_a),
+        .o_forward_b(forward_b)
+    );
+
+    // Compute forwarding data from MEM stage
+    assign mem_forward_data = mem_jump ? mem_pc_plus_4 : mem_alu_result;
+
+    // Compute forwarding data from WB stage
+    assign wb_forward_data = wb_jump ? wb_pc_plus_4 : 
+                            wb_mem_to_reg ? wb_load_data : 
+                            wb_alu_result;
+
+    // Select forwarded data for rs1
+    assign forward_rs1_data =
+        (forward_a == 2'b10) ? mem_forward_data :  // MEM→EX (EX-EX)
+        (forward_a == 2'b01) ? wb_forward_data  :  // WB→EX (MEM-EX)
+                            ex_rs1_rdata;          // From ID/EX
+
+    // Select forwarded data for rs2
+    assign forward_rs2_data =
+        (forward_b == 2'b10) ? mem_forward_data :  // MEM→EX (EX-EX)
+        (forward_b == 2'b01) ? wb_forward_data  :  // WB→EX (MEM-EX)
+                            ex_rs2_rdata;          // From ID/EX
     
     // ALU operand selection
-    assign ex_alu_op1 = ex_alu_src1 ? (ex_lui ? 32'd0 : ex_pc) : ex_rs1_rdata;
-    assign ex_alu_op2 = ex_alu_src2 ? ex_immediate : ex_rs2_rdata;
+    assign ex_alu_op1 = ex_alu_src1 ? (ex_lui ? 32'd0 : ex_pc) : forward_rs1_data;
+    assign ex_alu_op2 = ex_alu_src2 ? ex_immediate : forward_rs2_data;
     
     // ALU
     alu ALU (
@@ -510,7 +559,7 @@ module hart #(
     // PC redirect and flush signals
     assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
     assign flush_if_id = ex_pc_redirect;
-    assign flush_id_ex = ex_pc_redirect;
+    assign flush_id_ex = ex_pc_redirect | hazard_stall;
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
@@ -527,8 +576,6 @@ module hart #(
         // Computation results
         .i_alu_result(ex_alu_result),
         // Data signals
-        .i_rs1_rdata(ex_rs1_rdata),
-        .i_rs2_rdata(ex_rs2_rdata),
         .i_pc(ex_pc),
         .i_pc_plus_4(ex_pc_plus_4),
         .i_instruction(ex_instruction),
@@ -547,8 +594,6 @@ module hart #(
         .i_valid(ex_valid),
         // Outputs to MEM stage
         .o_alu_result(mem_alu_result),
-        .o_rs1_rdata(mem_rs1_rdata),
-        .o_rs2_rdata(mem_rs2_rdata),
         .o_pc(mem_pc),
         .o_pc_plus_4(mem_pc_plus_4),
         .o_instruction(mem_instruction),
@@ -562,7 +607,13 @@ module hart #(
         .o_jump(mem_jump),
         .o_retire_halt(mem_retire_halt),
         .o_next_pc_target(mem_next_pc_target),
-        .o_valid(mem_valid)
+        .o_valid(mem_valid),
+
+        // ADDED for forwarding
+        .i_rs1_fwd_data(forward_rs1_data),
+        .i_rs2_fwd_data(forward_rs2_data),
+        .o_rs1_fwd_data(mem_rs1_fwd_data),
+        .o_rs2_fwd_data(mem_rs2_fwd_data)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -591,11 +642,11 @@ module hart #(
     // Adjust write data position (shift to correct byte lane)
     assign mem_dmem_wdata = 
         // SB: shift left by byte offset
-        (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (mem_rs2_rdata << (mem_byte_offset * 8)) :
+        (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (mem_rs2_fwd_data << (mem_byte_offset * 8)) :
         // SH: shift left by half-word offset
-        (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b001) ? (mem_rs2_rdata << (mem_byte_offset[1] * 16)) :
+        (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b001) ? (mem_rs2_fwd_data << (mem_byte_offset[1] * 16)) :
         // SW: no shift needed
-        mem_rs2_rdata;
+        mem_rs2_fwd_data;
     
     // Connect memory interface outputs
     assign o_dmem_addr = mem_dmem_addr_aligned;
@@ -616,8 +667,6 @@ module hart #(
         .i_load_data(mem_load_data),
         .i_pc_plus_4(mem_pc_plus_4),
         // Original data
-        .i_rs1_rdata(mem_rs1_rdata),
-        .i_rs2_rdata(mem_rs2_rdata),
         .i_pc(mem_pc),
         .i_instruction(mem_instruction),
         // Address signals
@@ -638,12 +687,11 @@ module hart #(
         .i_retire_halt(mem_retire_halt),
         .i_next_pc_target(mem_next_pc_target),
         .i_valid(mem_valid),
+
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
         .o_load_data(wb_load_data),
         .o_pc_plus_4(wb_pc_plus_4),
-        .o_rs1_rdata(wb_rs1_rdata),
-        .o_rs2_rdata(wb_rs2_rdata),
         .o_pc(wb_pc),
         .o_instruction(wb_instruction),
         .o_rs1_addr(wb_rs1_addr),
@@ -660,7 +708,13 @@ module hart #(
         .o_retire_halt(wb_retire_halt),
         .o_next_pc_target(wb_next_pc_target),
         .o_valid(wb_valid),
-        .o_mem_byte_offset(wb_mem_byte_offset)
+        .o_mem_byte_offset(wb_mem_byte_offset),
+
+        // ADDED for forwarding
+        .i_rs1_fwd_data(mem_rs1_fwd_data),
+        .i_rs2_fwd_data(mem_rs2_fwd_data),
+        .o_rs1_fwd_data(wb_rs1_fwd_data),
+        .o_rs2_fwd_data(wb_rs2_fwd_data)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
@@ -668,6 +722,7 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
 
     // Extract and extend load data based on offset
+    // Moved here for synchronous memory read
     assign wb_load_data = 
         // LW - no adjustment needed
         (wb_instruction[14:12] == 3'b010) ? i_dmem_rdata :
@@ -706,8 +761,8 @@ module hart #(
     assign o_retire_halt = wb_retire_halt;
     assign o_retire_rs1_raddr = wb_rs1_addr;
     assign o_retire_rs2_raddr = wb_rs2_addr;
-    assign o_retire_rs1_rdata = wb_rs1_rdata;
-    assign o_retire_rs2_rdata = wb_rs2_rdata;
+    assign o_retire_rs1_rdata = wb_rs1_fwd_data;
+    assign o_retire_rs2_rdata = wb_rs2_fwd_data;
     assign o_retire_rd_waddr = wb_RegWrite ? wb_rd_waddr : 5'd0;
     assign o_retire_rd_wdata = wb_rd_wdata;
     
@@ -717,7 +772,7 @@ module hart #(
     assign o_retire_dmem_wen = wb_dmem_wen;
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
-    assign o_retire_dmem_rdata = wb_dmem_rdata;
+    assign o_retire_dmem_rdata = i_dmem_rdata;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
     

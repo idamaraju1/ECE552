@@ -11,8 +11,6 @@ module mem_wb (
     input  wire [31:0] i_pc_plus_4,
     
     // Original data needed by retire
-    input  wire [31:0] i_rs1_rdata,
-    input  wire [31:0] i_rs2_rdata,
     input  wire [31:0] i_pc,
     input  wire [31:0] i_instruction,
     input  wire [31:0] i_next_pc_target,
@@ -42,8 +40,6 @@ module mem_wb (
     output reg  [31:0] o_pc_plus_4,
     
     // Original data for retire
-    output reg  [31:0] o_rs1_rdata,
-    output reg  [31:0] o_rs2_rdata,
     output reg  [31:0] o_pc,
     output reg  [31:0] o_instruction,
     output reg  [31:0] o_next_pc_target,
@@ -66,8 +62,13 @@ module mem_wb (
     output reg         o_jump,
     output reg         o_reg_write,
     output reg         o_mem_to_reg,
-    output reg         o_retire_halt
+    output reg         o_retire_halt,
 
+    // ADDED for forwarding
+    input  wire [31:0] i_rs1_fwd_data,  // Actual rs1 value used (after forwarding)
+    input  wire [31:0] i_rs2_fwd_data,  // Actual rs2 value used (after forwarding)
+    output reg  [31:0] o_rs1_fwd_data,
+    output reg  [31:0] o_rs2_fwd_data
 );
 
     always @(posedge i_clk) begin
@@ -76,8 +77,6 @@ module mem_wb (
             o_load_data <= 32'h00000000;
             o_pc_plus_4 <= 32'h00000004;
             
-            o_rs1_rdata <= 32'h00000000;
-            o_rs2_rdata <= 32'h00000000;
             o_pc <= 32'h00000000;
             o_instruction <= 32'h00000013;  // NOP
             o_next_pc_target <= 32'h00000000;
@@ -98,6 +97,10 @@ module mem_wb (
             o_mem_to_reg <= 1'b0;
             o_jump <= 1'b0;
             o_retire_halt <= 1'b0;
+
+            // ADDED for forwarding
+            o_rs1_fwd_data <= 32'h00000000;
+            o_rs2_fwd_data <= 32'h00000000;
         end else begin
             // Writeback data candidates
             o_alu_result <= i_alu_result;
@@ -105,8 +108,6 @@ module mem_wb (
             o_pc_plus_4 <= i_pc_plus_4;
             
             // Original data
-            o_rs1_rdata <= i_rs1_rdata;
-            o_rs2_rdata <= i_rs2_rdata;
             o_pc <= i_pc;
             o_instruction <= i_instruction;
             o_next_pc_target <= i_next_pc_target;
@@ -130,6 +131,10 @@ module mem_wb (
             o_retire_halt <= i_retire_halt;
             o_valid <= i_valid;
             o_mem_byte_offset <= i_mem_byte_offset;
+
+            // ADDED for forwarding
+            o_rs1_fwd_data <= i_rs1_fwd_data;
+            o_rs2_fwd_data <= i_rs2_fwd_data;
         end
     end
 

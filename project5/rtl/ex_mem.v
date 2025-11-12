@@ -9,8 +9,6 @@ module ex_mem (
     input  wire [31:0] i_alu_result,
     
     // Data that continues to propagate
-    input  wire [31:0] i_rs1_rdata,
-    input  wire [31:0] i_rs2_rdata,
     input  wire [31:0] i_pc,
     input  wire [31:0] i_pc_plus_4,
     input  wire [31:0] i_instruction,
@@ -33,8 +31,6 @@ module ex_mem (
     output reg  [31:0] o_alu_result,
     
     // Data that continues to propagate
-    output reg  [31:0] o_rs1_rdata,
-    output reg  [31:0] o_rs2_rdata,
     output reg  [31:0] o_pc,
     output reg  [31:0] o_pc_plus_4,
     output reg  [31:0] o_instruction,
@@ -52,14 +48,18 @@ module ex_mem (
     output reg         o_jump,
     output reg         o_mem_to_reg,
     output reg         o_retire_halt,
-    output reg         o_valid
+    output reg         o_valid,
+
+    // ADDED for forwarding
+    input  wire [31:0] i_rs1_fwd_data,  // Actual rs1 value used (after forwarding)
+    input  wire [31:0] i_rs2_fwd_data,  // Actual rs2 value used (after forwarding)
+    output reg  [31:0] o_rs1_fwd_data,
+    output reg  [31:0] o_rs2_fwd_data
 );
 
     always @(posedge i_clk) begin
         if (i_rst) begin
             o_alu_result <= 32'h00000000;
-            o_rs1_rdata <= 32'h00000000;
-            o_rs2_rdata <= 32'h00000000;
             o_pc <= 32'h00000000;
             o_pc_plus_4 <= 32'h00000004;
             o_instruction <= 32'h00000013;  // NOP
@@ -76,13 +76,16 @@ module ex_mem (
             o_jump <= 1'b0;
             o_retire_halt <= 1'b0;
             o_valid <= 1'b0;
+
+            // ADDED for forwarding
+            o_rs1_fwd_data <= 32'h00000000;
+            o_rs2_fwd_data <= 32'h00000000;
+
         end else begin
             // Computation results
             o_alu_result <= i_alu_result;
             
             // Data signals
-            o_rs1_rdata <= i_rs1_rdata;
-            o_rs2_rdata <= i_rs2_rdata;
             o_pc <= i_pc;
             o_pc_plus_4 <= i_pc_plus_4;
             o_instruction <= i_instruction;
@@ -101,6 +104,10 @@ module ex_mem (
             o_mem_to_reg <= i_mem_to_reg;
             o_jump <= i_jump;
             o_retire_halt <= i_retire_halt;
+
+            // ADDED for forwarding
+            o_rs1_fwd_data <= i_rs1_fwd_data;
+            o_rs2_fwd_data <= i_rs2_fwd_data;
         end
     end
 
