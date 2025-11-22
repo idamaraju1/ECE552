@@ -1,0 +1,99 @@
+C:/Users/davis/ece552-group/ECE552/project5/rtl/if_id.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/if_id.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module if_id
+
+Top level modules:
+	if_id
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/ctrl.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/ctrl.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module ctrl
+
+Top level modules:
+	ctrl
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/alu_ctrl.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/alu_ctrl.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module alu_ctrl
+
+Top level modules:
+	alu_ctrl
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/mem_wb.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/mem_wb.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module mem_wb
+
+Top level modules:
+	mem_wb
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/hart.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/hart.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module hart
+
+Top level modules:
+	hart
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/hazard_unit.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/hazard_unit.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module hazard_unit
+
+Top level modules:
+	hazard_unit
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/pc.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/pc.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module pc
+
+Top level modules:
+	pc
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/ex_mem.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/ex_mem.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module ex_mem
+
+Top level modules:
+	ex_mem
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/imm.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/imm.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module imm
+
+Top level modules:
+	imm
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/rf.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/rf.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module rf
+
+Top level modules:
+	rf
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/dff.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/dff.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module dff
+
+Top level modules:
+	dff
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/id_ex.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/id_ex.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module id_ex
+
+Top level modules:
+	id_ex
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/rtl/alu.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/rtl/alu.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module alu
+
+Top level modules:
+	alu
+
+} {} {}} C:/Users/davis/ece552-group/ECE552/project5/tb/tb.v {1 {vlog -work work -stats=none C:/Users/davis/ece552-group/ECE552/project5/tb/tb.v
+Model Technology ModelSim - Intel FPGA Edition vlog 10.5b Compiler 2016.10 Oct  5 2016
+-- Compiling module hart_tb
+
+Top level modules:
+	hart_tb
+
+} {} {}}

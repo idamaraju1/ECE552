@@ -7,7 +7,6 @@ module mem_wb (
     
     // Writeback data candidates from MEM stage
     input  wire [31:0] i_alu_result,
-    input  wire [31:0] i_load_data,
     input  wire [31:0] i_pc_plus_4,
     
     // Original data needed by retire
@@ -36,7 +35,6 @@ module mem_wb (
     
     // Writeback data candidates to WB stage
     output reg  [31:0] o_alu_result,
-    output reg  [31:0] o_load_data,
     output reg  [31:0] o_pc_plus_4,
     
     // Original data for retire
@@ -74,7 +72,6 @@ module mem_wb (
     always @(posedge i_clk) begin
         if (i_rst) begin
             o_alu_result <= 32'h00000000;
-            o_load_data <= 32'h00000000;
             o_pc_plus_4 <= 32'h00000004;
             
             o_pc <= 32'h00000000;
@@ -104,7 +101,6 @@ module mem_wb (
         end else begin
             // Writeback data candidates
             o_alu_result <= i_alu_result;
-            o_load_data <= i_load_data;
             o_pc_plus_4 <= i_pc_plus_4;
             
             // Original data

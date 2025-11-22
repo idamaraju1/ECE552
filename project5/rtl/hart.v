@@ -265,7 +265,6 @@ module hart #(
     wire [1:0]  mem_byte_offset;
     wire [3:0]  mem_dmem_mask;
     wire [31:0] mem_dmem_wdata;
-    wire [31:0] mem_load_data;
     
     // MEM/WB Stage wires
     wire [31:0] wb_alu_result;
@@ -664,7 +663,6 @@ module hart #(
         .i_rst(i_rst),
         // Writeback data candidates
         .i_alu_result(mem_alu_result),
-        .i_load_data(mem_load_data),
         .i_pc_plus_4(mem_pc_plus_4),
         // Original data
         .i_pc(mem_pc),
@@ -690,7 +688,6 @@ module hart #(
 
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
-        .o_load_data(wb_load_data),
         .o_pc_plus_4(wb_pc_plus_4),
         .o_pc(wb_pc),
         .o_instruction(wb_instruction),

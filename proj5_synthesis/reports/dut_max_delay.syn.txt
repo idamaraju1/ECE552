@@ -1,0 +1,124 @@
+ 
+****************************************
+Report : timing
+        -path full
+        -delay max
+        -max_paths 1
+Design : hart
+Version: X-2025.06
+Date   : Tue Nov 11 21:48:20 2025
+****************************************
+
+ # A fanout number of 1000 was used for high fanout net computations.
+
+Operating Conditions: tt0p85v25c   Library: saed32rvt_tt0p85v25c
+Wire Load Model Mode: enclosed
+
+  Startpoint: MEM_WB/o_instruction_reg[12]
+              (rising edge-triggered flip-flop clocked by clk)
+  Endpoint: o_imem_raddr[10]
+            (output port clocked by clk)
+  Path Group: clk
+  Path Type: max
+
+  Des/Clust/Port     Wire Load Model       Library
+  ------------------------------------------------
+  hart               35000                 saed32rvt_tt0p85v25c
+
+  Point                                                   Incr       Path
+  --------------------------------------------------------------------------
+  clock clk (rise edge)                                   0.00       0.00
+  clock network delay (ideal)                             0.00       0.00
+  MEM_WB/o_instruction_reg[12]/CLK (DFFX1_RVT)            0.00 #     0.00 r
+  MEM_WB/o_instruction_reg[12]/Q (DFFX1_RVT)              0.13       0.13 r
+  U5697/Y (NAND3X0_RVT)                                   0.07       0.20 f
+  U5695/Y (NAND2X0_RVT)                                   0.08       0.28 r
+  U6808/Y (INVX1_RVT)                                     0.05       0.33 f
+  U5688/Y (NAND2X0_RVT)                                   0.06       0.39 r
+  U5687/Y (AOI21X1_RVT)                                   0.10       0.49 f
+  U5582/Y (AND2X1_RVT)                                    0.08       0.56 f
+  U5581/Y (AO22X1_RVT)                                    0.08       0.64 f
+  U5580/Y (AO221X1_RVT)                                   0.07       0.70 f
+  U5799/Y (AO222X1_RVT)                                   0.10       0.80 f
+  U6388/Y (NBUFFX2_RVT)                                   0.07       0.88 f
+  U4371/Y (AO221X1_RVT)                                   0.13       1.01 f
+  U4370/Y (AO22X1_RVT)                                    0.09       1.10 f
+  U5714/Y (INVX1_RVT)                                     0.10       1.20 r
+  ALU/add_55_2/U1_1_1/SO (HADDX1_RVT)                     0.16       1.36 f
+  U4183/Y (NAND2X0_RVT)                                   0.05       1.41 r
+  U4182/Y (AO22X1_RVT)                                    0.08       1.49 r
+  U4181/Y (OR2X1_RVT)                                     0.06       1.56 r
+  U4180/Y (AO222X1_RVT)                                   0.10       1.66 r
+  U4179/Y (OA221X1_RVT)                                   0.08       1.74 r
+  U4178/Y (AO21X1_RVT)                                    0.06       1.80 r
+  U4177/Y (OR2X1_RVT)                                     0.06       1.86 r
+  U4176/Y (AO22X1_RVT)                                    0.07       1.93 r
+  U4175/Y (OR2X1_RVT)                                     0.06       2.00 r
+  U4174/Y (AO222X1_RVT)                                   0.10       2.10 r
+  U4173/Y (OA221X1_RVT)                                   0.08       2.17 r
+  U4172/Y (AO21X1_RVT)                                    0.06       2.23 r
+  U4171/Y (OR2X1_RVT)                                     0.06       2.30 r
+  U4170/Y (AO22X1_RVT)                                    0.07       2.37 r
+  U4169/Y (OR2X1_RVT)                                     0.06       2.43 r
+  U4168/Y (AO222X1_RVT)                                   0.10       2.54 r
+  U4167/Y (OA221X1_RVT)                                   0.08       2.61 r
+  U4166/Y (AO21X1_RVT)                                    0.06       2.67 r
+  U4165/Y (OR2X1_RVT)                                     0.06       2.73 r
+  U4164/Y (AO22X1_RVT)                                    0.07       2.81 r
+  U4163/Y (OR2X1_RVT)                                     0.06       2.87 r
+  U4162/Y (AO222X1_RVT)                                   0.10       2.97 r
+  U4161/Y (OA221X1_RVT)                                   0.08       3.05 r
+  U4160/Y (AO21X1_RVT)                                    0.06       3.11 r
+  U4159/Y (OR2X1_RVT)                                     0.06       3.17 r
+  U4158/Y (AO22X1_RVT)                                    0.07       3.24 r
+  U4157/Y (OR2X1_RVT)                                     0.06       3.31 r
+  U4156/Y (AO222X1_RVT)                                   0.10       3.41 r
+  U4155/Y (OA221X1_RVT)                                   0.08       3.49 r
+  U4154/Y (AO21X1_RVT)                                    0.06       3.55 r
+  U4153/Y (OR2X1_RVT)                                     0.06       3.61 r
+  U4152/Y (AO22X1_RVT)                                    0.07       3.68 r
+  U4151/Y (OR2X1_RVT)                                     0.06       3.75 r
+  U4150/Y (AO222X1_RVT)                                   0.10       3.85 r
+  U4149/Y (OA221X1_RVT)                                   0.08       3.92 r
+  U4148/Y (AO21X1_RVT)                                    0.06       3.98 r
+  U4147/Y (OR2X1_RVT)                                     0.06       4.05 r
+  U4146/Y (AO22X1_RVT)                                    0.07       4.12 r
+  U4145/Y (OR2X1_RVT)                                     0.06       4.18 r
+  U4144/Y (AO222X1_RVT)                                   0.10       4.29 r
+  U4143/Y (OA221X1_RVT)                                   0.08       4.36 r
+  U4142/Y (AO221X1_RVT)                                   0.08       4.44 r
+  U4141/Y (OA221X1_RVT)                                   0.07       4.51 r
+  U4140/Y (AOI21X1_RVT)                                   0.08       4.59 f
+  U4139/Y (AND2X1_RVT)                                    0.06       4.65 f
+  U4138/Y (OA22X1_RVT)                                    0.08       4.72 f
+  U4137/Y (OA221X1_RVT)                                   0.09       4.82 f
+  U6657/Y (XNOR2X1_RVT)                                   0.13       4.95 r
+  U4136/Y (AO22X1_RVT)                                    0.08       5.03 r
+  U4135/Y (NAND3X0_RVT)                                   0.06       5.09 f
+  U3645/Y (NAND2X0_RVT)                                   0.07       5.16 r
+  U3642/Y (AO21X1_RVT)                                    0.09       5.26 r
+  U6240/Y (INVX1_RVT)                                     0.05       5.30 f
+  U5973/Y (NBUFFX2_RVT)                                   0.08       5.38 f
+  U2304/Y (AND2X1_RVT)                                    0.13       5.51 f
+  U6241/Y (INVX1_RVT)                                     0.10       5.61 r
+  U5974/Y (INVX1_RVT)                                     0.09       5.70 f
+  U5765/Y (AND2X1_RVT)                                    0.12       5.83 f
+  U6239/Y (NBUFFX2_RVT)                                   0.08       5.90 f
+  U2209/Y (AND2X1_RVT)                                    0.09       5.99 f
+  U2206/Y (AO221X1_RVT)                                   0.10       6.09 f
+  o_imem_raddr[10] (out)                                  0.00       6.09 f
+  data arrival time                                                  6.09
+
+  clock clk (rise edge)                                   7.00       7.00
+  clock network delay (ideal)                             0.00       7.00
+  clock uncertainty                                      -0.15       6.85
+  output external delay                                  -0.50       6.35
+  data required time                                                 6.35
+  --------------------------------------------------------------------------
+  data required time                                                 6.35
+  data arrival time                                                 -6.09
+  --------------------------------------------------------------------------
+  slack (MET)                                                        0.26
+
+
+1
