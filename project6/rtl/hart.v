@@ -1,7 +1,7 @@
 `default_nettype none
 
 // Comment/uncomment this line to enable/disable cache
-// `define USE_CACHE
+//`define USE_CACHE
 
 module hart #(
     parameter RESET_ADDR = 32'h00000000
@@ -338,11 +338,10 @@ module hart #(
                             if_pc + 32'd4;
 
 `ifdef USE_CACHE
-    // Instruction cache request
-    assign icache_req_addr = (stall_pc | cache_stall) ? if_pc : 
-                             first_cycle ? if_pc : 
-                             if_next_pc;
-    // Only request when not in first cycle and not stalling
+    // Instruction cache request - always request current PC
+    assign icache_req_addr = if_pc;
+    // Request when not in first cycle (need PC to be valid)
+    // Don't request during cache stall - cache is handling miss
     assign icache_req_ren = ~first_cycle & ~cache_stall;
 `endif
     
