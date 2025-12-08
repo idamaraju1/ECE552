@@ -3,6 +3,7 @@
 module mem_wb (
     input  wire        i_clk,
     input  wire        i_rst,
+    input  wire        i_stall,   // 1 = hold current values
     input  wire        i_valid,
     
     // Writeback data candidates from MEM stage
@@ -101,6 +102,8 @@ module mem_wb (
             // ADDED for forwarding
             o_rs1_fwd_data <= 32'h00000000;
             o_rs2_fwd_data <= 32'h00000000;
+        end else if (i_stall) begin
+            // Hold current values during stall
         end else begin
             // Writeback data candidates
             o_alu_result <= i_alu_result;

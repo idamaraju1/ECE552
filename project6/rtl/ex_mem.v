@@ -3,6 +3,7 @@
 module ex_mem (
     input  wire        i_clk,
     input  wire        i_rst,
+    input  wire        i_stall,   // 1 = hold current values
     input  wire        i_valid,
 
     // Computation results from EX stage
@@ -81,6 +82,8 @@ module ex_mem (
             o_rs1_fwd_data <= 32'h00000000;
             o_rs2_fwd_data <= 32'h00000000;
 
+        end else if (i_stall) begin
+            // Hold current values during stall
         end else begin
             // Computation results
             o_alu_result <= i_alu_result;

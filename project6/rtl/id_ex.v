@@ -4,6 +4,7 @@ module id_ex (
     input  wire        i_clk,
     input  wire        i_rst,
     input  wire        i_flush,   // 1 = insert bubble
+    input  wire        i_stall,   // 1 = hold current values
     input  wire        i_valid,
     
     // Data signals from ID stage
@@ -88,6 +89,8 @@ module id_ex (
             o_reg_write <= 1'b0;
             o_mem_to_reg <= 1'b0;
             o_retire_halt <= 1'b0;
+        end else if (i_stall) begin
+            // Hold current values during stall
         end else if (i_flush) begin
             o_pc <= i_pc;
             o_pc_plus_4 <= i_pc_plus_4;

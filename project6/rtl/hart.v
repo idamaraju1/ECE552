@@ -1,5 +1,8 @@
 `default_nettype none
 
+// Comment/uncomment this line to enable/disable cache
+// `define USE_CACHE
+
 module hart #(
     parameter RESET_ADDR = 32'h00000000
 ) (
@@ -7,157 +10,39 @@ module hart #(
     input  wire        i_clk,
     // Synchronous active-high reset.
     input  wire        i_rst,
-    // Instruction fetch goes through a read only instruction memory (imem)
-    // port. The port accepts a 32-bit address (e.g. from the program counter)
-    // per cycle and combinationally returns a 32-bit instruction word. This
-    // is not representative of a realistic memory interface; it has been
-    // modeled as more similar to a DFF or SRAM to simplify phase 3. In
-    // later phases, you will replace this with a more realistic memory.
-    //
-    // 32-bit read address for the instruction memory. This is expected to be
-    // 4 byte aligned - that is, the two LSBs should be zero.
+    // Instruction memory interface (external memory)
+    input  wire        i_imem_ready,
     output wire [31:0] o_imem_raddr,
-    // Instruction word fetched from memory, available synchronously after
-    // the next clock edge.
-    // NOTE: This is different from the previous phase. To accomodate a
-    // multi-cycle pipelined design, the instruction memory read is
-    // now synchronous.
+    output wire        o_imem_ren,
+    input  wire        i_imem_valid,
     input  wire [31:0] i_imem_rdata,
-    // Data memory accesses go through a separate read/write data memory (dmem)
-    // that is shared between read (load) and write (stored). The port accepts
-    // a 32-bit address, read or write enable, and mask (explained below) each
-    // cycle. Reads are combinational - values are available immediately after
-    // updating the address and asserting read enable. Writes occur on (and
-    // are visible at) the next clock edge.
-    //
-    // Read/write address for the data memory. This should be 32-bit aligned
-    // (i.e. the two LSB should be zero). See `o_dmem_mask` for how to perform
-    // half-word and byte accesses at unaligned addresses.
+    // Data memory interface (external memory)
+    input  wire        i_dmem_ready,
     output wire [31:0] o_dmem_addr,
-    // When asserted, the memory will perform a read at the aligned address
-    // specified by `i_addr` and return the 32-bit word at that address
-    // immediately (i.e. combinationally). It is illegal to assert this and
-    // `o_dmem_wen` on the same cycle.
     output wire        o_dmem_ren,
-    // When asserted, the memory will perform a write to the aligned address
-    // `o_dmem_addr`. When asserted, the memory will write the bytes in
-    // `o_dmem_wdata` (specified by the mask) to memory at the specified
-    // address on the next rising clock edge. It is illegal to assert this and
-    // `o_dmem_ren` on the same cycle.
     output wire        o_dmem_wen,
-    // The 32-bit word to write to memory when `o_dmem_wen` is asserted. When
-    // write enable is asserted, the byte lanes specified by the mask will be
-    // written to the memory word at the aligned address at the next rising
-    // clock edge. The other byte lanes of the word will be unaffected.
     output wire [31:0] o_dmem_wdata,
-    // The dmem interface expects word (32 bit) aligned addresses. However,
-    // WISC-25 supports byte and half-word loads and stores at unaligned and
-    // 16-bit aligned addresses, respectively. To support this, the access
-    // mask specifies which bytes within the 32-bit word are actually read
-    // from or written to memory.
-    //
-    // To perform a half-word read at address 0x00001002, align `o_dmem_addr`
-    // to 0x00001000, assert `o_dmem_ren`, and set the mask to 0b1100 to
-    // indicate that only the upper two bytes should be read. Only the upper
-    // two bytes of `i_dmem_rdata` can be assumed to have valid data; to
-    // calculate the final value of the `lh[u]` instruction, shift the rdata
-    // word right by 16 bits and sign/zero extend as appropriate.
-    //
-    // To perform a byte write at address 0x00002003, align `o_dmem_addr` to
-    // `0x00002000`, assert `o_dmem_wen`, and set the mask to 0b1000 to
-    // indicate that only the upper byte should be written. On the next clock
-    // cycle, the upper byte of `o_dmem_wdata` will be written to memory, with
-    // the other three bytes of the aligned word unaffected. Remember to shift
-    // the value of the `sb` instruction left by 24 bits to place it in the
-    // appropriate byte lane.
     output wire [ 3:0] o_dmem_mask,
-    // The 32-bit word read from data memory. When `o_dmem_ren` is asserted,
-    // after the next clock edge, this will reflect the contents of memory
-    // at the specified address, for the bytes enabled by the mask. When
-    // read enable is not asserted, or for bytes not set in the mask, the
-    // value is undefined.
-    // NOTE: This is different from the previous phase. To accomodate a
-    // multi-cycle pipelined design, the data memory read is
-    // now synchronous.
+    input  wire        i_dmem_valid,
     input  wire [31:0] i_dmem_rdata,
-    // The output `retire` interface is used to signal to the testbench that
-    // the CPU has completed and retired an instruction. A single cycle
-    // implementation will assert this every cycle; however, a pipelined
-    // implementation that needs to stall (due to internal hazards or waiting
-    // on memory accesses) will not assert the signal on cycles where the
-    // instruction in the writeback stage is not retiring.
-    //
-    // Asserted when an instruction is being retired this cycle. If this is
-    // not asserted, the other retire signals are ignored and may be left invalid.
+    // Retire interface
     output wire        o_retire_valid,
-    // The 32 bit instruction word of the instrution being retired. This
-    // should be the unmodified instruction word fetched from instruction
-    // memory.
     output wire [31:0] o_retire_inst,
-    // Asserted if the instruction produced a trap, due to an illegal
-    // instruction, unaligned data memory access, or unaligned instruction
-    // address on a taken branch or jump.
     output wire        o_retire_trap,
-    // Asserted if the instruction is an `ebreak` instruction used to halt the
-    // processor. This is used for debugging and testing purposes to end
-    // a program.
     output wire        o_retire_halt,
-    // The first register address read by the instruction being retired. If
-    // the instruction does not read from a register (like `lui`), this
-    // should be 5'd0.
     output wire [ 4:0] o_retire_rs1_raddr,
-    // The second register address read by the instruction being retired. If
-    // the instruction does not read from a second register (like `addi`), this
-    // should be 5'd0.
     output wire [ 4:0] o_retire_rs2_raddr,
-    // The first source register data read from the register file (in the
-    // decode stage) for the instruction being retired. If rs1 is 5'd0, this
-    // should also be 32'd0.
     output wire [31:0] o_retire_rs1_rdata,
-    // The second source register data read from the register file (in the
-    // decode stage) for the instruction being retired. If rs2 is 5'd0, this
-    // should also be 32'd0.
     output wire [31:0] o_retire_rs2_rdata,
-    // The destination register address written by the instruction being
-    // retired. If the instruction does not write to a register (like `sw`),
-    // this should be 5'd0.
     output wire [ 4:0] o_retire_rd_waddr,
-    // The destination register data written to the register file in the
-    // writeback stage by this instruction. If rd is 5'd0, this field is
-    // ignored and can be treated as a don't care.
     output wire [31:0] o_retire_rd_wdata,
-    // The following data memory retire interface is used to record the
-    // memory transactions completed by the instruction being retired.
-    // As such, it mirrors the transactions happening on the main data
-    // memory interface (o_dmem_* and i_dmem_*) but is delayed to match
-    // the retirement of the instruction. You can hook this up by just
-    // registering the main dmem interface signals into the writeback
-    // stage of your pipeline.
-    //
-    // All these fields are don't-care for instructions that do not
-    // access data memory (o_retire_dmem_ren and o_retire_dmem_wen
-    // not asserted).
-    // NOTE: This interface is new for phase 5 in order to account for
-    // the delay between data memory accesses and instruction retire.
-    //
-    // The 32-bit data memory address accessed by the instruction.
     output wire [31:0] o_retire_dmem_addr,
-    // The byte masked used for the data memory access.
     output wire [ 3:0] o_retire_dmem_mask,
-    // Asserted if the instruction performed a read (load) from data memory.
     output wire        o_retire_dmem_ren,
-    // Asserted if the instruction performed a write (store) to data memory.
     output wire        o_retire_dmem_wen,
-    // The 32-bit data read from memory by a load instruction.
     output wire [31:0] o_retire_dmem_rdata,
-    // The 32-bit data written to memory by a store instruction.
     output wire [31:0] o_retire_dmem_wdata,
-    // The current program counter of the instruction being retired - i.e.
-    // the instruction memory address that the instruction was fetched from.
     output wire [31:0] o_retire_pc,
-    // the next program counter after the instruction is retired. For most
-    // instructions, this is `o_retire_pc + 4`, but must be the branch or jump
-    // target for *taken* branches and jumps.
     output wire [31:0] o_retire_next_pc
 
 `ifdef RISCV_FORMAL
@@ -289,9 +174,9 @@ module hart #(
     wire        wb_RegWrite;
     wire [31:0] wb_rd_wdata;
     wire        wb_retire_halt;
-    wire [1:0]  wb_mem_byte_offset; // ADDED
+    wire [1:0]  wb_mem_byte_offset;
 
-    // ADDED for hazards, forwarding, and reset initialization
+    // Hazards, forwarding, and reset initialization
     wire        hazard_stall;
     wire        stall_if_id;
     wire        stall_pc;
@@ -317,12 +202,114 @@ module hart #(
     wire [31:0] wb_rs1_fwd_data;
     wire [31:0] wb_rs2_fwd_data;
 
+    // Memory read data source (from cache or direct)
+    wire [31:0] mem_rdata_source;
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // CACHE INTEGRATION (or bypass)
+    ////////////////////////////////////////////////////////////////////////////////
+    
+`ifdef USE_CACHE
+    // Instruction cache signals
+    wire        icache_busy;
+    wire [31:0] icache_req_addr;
+    wire        icache_req_ren;
+    wire [31:0] icache_res_rdata;
+    
+    // Data cache signals
+    wire        dcache_busy;
+    wire [31:0] dcache_req_addr;
+    wire        dcache_req_ren;
+    wire        dcache_req_wen;
+    wire [3:0]  dcache_req_mask;
+    wire [31:0] dcache_req_wdata;
+    wire [31:0] dcache_res_rdata;
+    
+    // Cache stall signals - stall the entire pipeline when either cache is busy
+    wire cache_stall;
+    assign cache_stall = icache_busy | dcache_busy;
+    
+    // Memory read data source
+    assign mem_rdata_source = dcache_res_rdata;
+    
+    // Instruction Cache
+    cache icache (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        // External memory interface
+        .i_mem_ready(i_imem_ready),
+        .o_mem_addr(o_imem_raddr),
+        .o_mem_ren(o_imem_ren),
+        .o_mem_wen(),              // Instruction cache is read-only
+        .o_mem_wdata(),            // Instruction cache is read-only
+        .i_mem_rdata(i_imem_rdata),
+        .i_mem_valid(i_imem_valid),
+        // CPU interface
+        .o_busy(icache_busy),
+        .i_req_addr(icache_req_addr),
+        .i_req_ren(icache_req_ren),
+        .i_req_wen(1'b0),          // Instruction cache is read-only
+        .i_req_mask(4'b1111),      // Always full word for instructions
+        .i_req_wdata(32'b0),       // Instruction cache is read-only
+        .o_res_rdata(icache_res_rdata)
+    );
+    
+    // Data Cache
+    cache dcache (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        // External memory interface
+        .i_mem_ready(i_dmem_ready),
+        .o_mem_addr(o_dmem_addr),
+        .o_mem_ren(o_dmem_ren),
+        .o_mem_wen(o_dmem_wen),
+        .o_mem_wdata(o_dmem_wdata),
+        .i_mem_rdata(i_dmem_rdata),
+        .i_mem_valid(i_dmem_valid),
+        // CPU interface
+        .o_busy(dcache_busy),
+        .i_req_addr(dcache_req_addr),
+        .i_req_ren(dcache_req_ren),
+        .i_req_wen(dcache_req_wen),
+        .i_req_mask(dcache_req_mask),
+        .i_req_wdata(dcache_req_wdata),
+        .o_res_rdata(dcache_res_rdata)
+    );
+    
+    // Note: dmem_mask is handled internally by the cache
+    assign o_dmem_mask = 4'b1111;  // Cache always does word accesses to memory
+    
+`else
+    // ============================================================================
+    // NO CACHE MODE - Direct memory connection for testing
+    // ============================================================================
+    
+    // No cache stall in bypass mode
+    wire cache_stall;
+    assign cache_stall = 1'b0;
+    
+    // Memory read data source - direct from memory
+    assign mem_rdata_source = i_dmem_rdata;
+    
+    // Instruction memory - direct connection
+    assign o_imem_raddr = if_pc;
+    assign o_imem_ren = 1'b1;  // Always reading instructions
+    
+    // Data memory - direct connection
+    assign o_dmem_addr = mem_dmem_addr_aligned;
+    assign o_dmem_ren = mem_mem_read & mem_valid;
+    assign o_dmem_wen = mem_mem_write & mem_valid;
+    assign o_dmem_wdata = mem_dmem_wdata;
+    assign o_dmem_mask = mem_dmem_mask;
+    
+`endif
+
     ////////////////////////////////////////////////////////////////////////////////
     // IF Stage - Instruction Fetch
     ////////////////////////////////////////////////////////////////////////////////
 
     // Latch PC if not stalled or halted
-    assign pc_write_enable = ~wb_retire_halt & ~stall_pc;
+    assign pc_write_enable = ~wb_retire_halt & ~stall_pc & ~cache_stall;
     
     // PC register
     pc PC (
@@ -338,7 +325,7 @@ module hart #(
         if (i_rst) begin
             first_cycle <= 1'b1;
             if_valid <= 1'b0;
-        end else begin
+        end else if (!cache_stall) begin
             first_cycle <= 1'b0;
             if_valid <= 1'b1;
         end
@@ -350,10 +337,14 @@ module hart #(
         ex_pc_redirect    ? ex_jump_mux :
                             if_pc + 32'd4;
 
-    // Connect next PC, reset, or stall to instruction memory
-    assign o_imem_raddr = stall_pc ? if_pc : 
-                        first_cycle ? if_pc : 
-                        if_next_pc;
+`ifdef USE_CACHE
+    // Instruction cache request
+    assign icache_req_addr = (stall_pc | cache_stall) ? if_pc : 
+                             first_cycle ? if_pc : 
+                             if_next_pc;
+    // Only request when not in first cycle and not stalling
+    assign icache_req_ren = ~first_cycle & ~cache_stall;
+`endif
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
@@ -365,9 +356,14 @@ module hart #(
         .i_flush(flush_if_id),
         .i_pc(if_pc),
         .i_pc_plus_4(if_pc + 32'd4),
-        .i_instruction(i_imem_rdata),
+`ifdef USE_CACHE
+        .i_instruction(icache_res_rdata),
+        .i_valid(if_valid & ~icache_busy),
+`else
+        .i_instruction(i_imem_rdata),  // Direct from memory
         .i_valid(if_valid),
-        .i_stall(stall_if_id),
+`endif
+        .i_stall(stall_if_id | cache_stall),
         .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
@@ -388,7 +384,7 @@ module hart #(
         .o_hazard_stall(hazard_stall)
     );
 
-    // ADDED for hazard stall
+    // Hazard stall logic
     assign stall_pc     = hazard_stall;
     assign stall_if_id  = hazard_stall;
     
@@ -450,6 +446,7 @@ module hart #(
         .i_clk(i_clk),
         .i_rst(i_rst), 
         .i_flush(flush_id_ex),
+        .i_stall(cache_stall),
         // Data signals
         .i_pc(id_pc),
         .i_pc_plus_4(id_pc_plus_4),
@@ -556,10 +553,10 @@ module hart #(
                               ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
                               ex_branch_mux;
 
-    // PC redirect and flush signals
-    assign ex_pc_redirect = (ex_branch & ex_branch_condition) | ex_jump;
+    // PC redirect and flush signals - only when not stalled by cache
+    assign ex_pc_redirect = ((ex_branch & ex_branch_condition) | ex_jump) & ~cache_stall;
     assign flush_if_id = ex_pc_redirect;
-    assign flush_id_ex = ex_pc_redirect | hazard_stall;
+    assign flush_id_ex = (ex_pc_redirect | hazard_stall) & ~cache_stall;
     
     // Propagate next_pc_target to retire target testbench
     assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
@@ -573,6 +570,7 @@ module hart #(
     ex_mem EX_MEM (
         .i_clk(i_clk),
         .i_rst(i_rst),
+        .i_stall(cache_stall),
         // Computation results
         .i_alu_result(ex_alu_result),
         // Data signals
@@ -609,7 +607,7 @@ module hart #(
         .o_next_pc_target(mem_next_pc_target),
         .o_valid(mem_valid),
 
-        // ADDED for forwarding
+        // Forwarding
         .i_rs1_fwd_data(forward_rs1_data),
         .i_rs2_fwd_data(forward_rs2_data),
         .o_rs1_fwd_data(mem_rs1_fwd_data),
@@ -648,12 +646,38 @@ module hart #(
         // SW: no shift needed
         mem_rs2_fwd_data;
     
-    // Connect memory interface outputs
-    assign o_dmem_addr = mem_dmem_addr_aligned;
-    assign o_dmem_ren = mem_mem_read;
-    assign o_dmem_wen = mem_mem_write;
-    assign o_dmem_mask = mem_dmem_mask;
-    assign o_dmem_wdata = mem_dmem_wdata;
+`ifdef USE_CACHE
+    // Connect to data cache - only issue request when not already processing a miss
+    assign dcache_req_addr = mem_dmem_addr_aligned;
+    assign dcache_req_ren = mem_mem_read & mem_valid & ~dcache_busy;
+    assign dcache_req_wen = mem_mem_write & mem_valid & ~dcache_busy;
+    assign dcache_req_mask = mem_dmem_mask;
+    assign dcache_req_wdata = mem_dmem_wdata;
+`endif
+
+    // Extract load data in MEM stage for passing to MEM/WB
+    assign mem_load_data = 
+        // LW - no adjustment needed
+        (mem_instruction[14:12] == 3'b010) ? mem_rdata_source :
+        // LH - extract half-word and sign extend
+        (mem_instruction[14:12] == 3'b001) ? 
+            (mem_byte_offset[1] ? {{16{mem_rdata_source[31]}}, mem_rdata_source[31:16]} :
+                                  {{16{mem_rdata_source[15]}}, mem_rdata_source[15:0]}) :
+        // LHU - extract half-word and zero extend  
+        (mem_instruction[14:12] == 3'b101) ?
+            (mem_byte_offset[1] ? {16'd0, mem_rdata_source[31:16]} :
+                                  {16'd0, mem_rdata_source[15:0]}) :
+        // LB - extract byte and sign extend
+        (mem_instruction[14:12] == 3'b000) ?
+            (mem_byte_offset == 2'b00 ? {{24{mem_rdata_source[7]}}, mem_rdata_source[7:0]} :
+             mem_byte_offset == 2'b01 ? {{24{mem_rdata_source[15]}}, mem_rdata_source[15:8]} :
+             mem_byte_offset == 2'b10 ? {{24{mem_rdata_source[23]}}, mem_rdata_source[23:16]} :
+                                        {{24{mem_rdata_source[31]}}, mem_rdata_source[31:24]}) :
+        // LBU - extract byte and zero extend
+        (mem_byte_offset == 2'b00 ? {24'd0, mem_rdata_source[7:0]} :
+         mem_byte_offset == 2'b01 ? {24'd0, mem_rdata_source[15:8]} :
+         mem_byte_offset == 2'b10 ? {24'd0, mem_rdata_source[23:16]} :
+                                    {24'd0, mem_rdata_source[31:24]});
     
     ////////////////////////////////////////////////////////////////////////////////
     // MEM/WB Pipeline Register
@@ -662,6 +686,7 @@ module hart #(
     mem_wb MEM_WB (
         .i_clk(i_clk),
         .i_rst(i_rst),
+        .i_stall(cache_stall),
         // Writeback data candidates
         .i_alu_result(mem_alu_result),
         .i_load_data(mem_load_data),
@@ -710,7 +735,7 @@ module hart #(
         .o_valid(wb_valid),
         .o_mem_byte_offset(wb_mem_byte_offset),
 
-        // ADDED for forwarding
+        // Forwarding
         .i_rs1_fwd_data(mem_rs1_fwd_data),
         .i_rs2_fwd_data(mem_rs2_fwd_data),
         .o_rs1_fwd_data(wb_rs1_fwd_data),
@@ -720,31 +745,6 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // WB Stage - Write Back
     ////////////////////////////////////////////////////////////////////////////////
-
-    // Extract and extend load data based on offset
-    // Moved here for synchronous memory read
-    assign wb_load_data = 
-        // LW - no adjustment needed
-        (wb_instruction[14:12] == 3'b010) ? i_dmem_rdata :
-        // LH - extract half-word and sign extend
-        (wb_instruction[14:12] == 3'b001) ? 
-            (wb_mem_byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
-                                  {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
-        // LHU - extract half-word and zero extend  
-        (wb_instruction[14:12] == 3'b101) ?
-            (wb_mem_byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
-                                  {16'd0, i_dmem_rdata[15:0]}) :
-        // LB - extract byte and sign extend
-        (wb_instruction[14:12] == 3'b000) ?
-            (wb_mem_byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
-             wb_mem_byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
-             wb_mem_byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
-                                        {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
-        // LBU - extract byte and zero extend
-        (wb_mem_byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
-         wb_mem_byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
-         wb_mem_byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
-                                    {24'd0, i_dmem_rdata[31:24]});
     
     // Calculate write-back data
     assign wb_rd_wdata = 
@@ -755,7 +755,7 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // Retire Interface - Connected to WB stage outputs
     ////////////////////////////////////////////////////////////////////////////////
-    assign o_retire_valid = wb_valid;
+    assign o_retire_valid = wb_valid & ~cache_stall;
     assign o_retire_inst = wb_instruction;
     assign o_retire_trap = 1'b0;
     assign o_retire_halt = wb_retire_halt;
@@ -772,7 +772,7 @@ module hart #(
     assign o_retire_dmem_wen = wb_dmem_wen;
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
-    assign o_retire_dmem_rdata = i_dmem_rdata;
+    assign o_retire_dmem_rdata = mem_rdata_source;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
     
