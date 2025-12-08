@@ -79,10 +79,15 @@ module cache (
     localparam T = 32 - O - S;   // 23 bit tag
     localparam D = 2 ** O / 4;   // 16 bytes per line / 4 bytes per word = 4 words per line
 
-    // The following memory arrays model the cache structure. As this is
-    // an internal implementation detail, you are *free* to modify these
-    // arrays as you please.
+    // FSM states
+    localparam [1:0] IDLE       = 2'd0,
+                     READ_MISS  = 2'd1,
+                     WRITE_MISS = 2'd2,
+                     WRITE_MEM  = 2'd3;
 
+    // =========================================================================
+    // Storage Arrays
+    // =========================================================================
     // Backing memory, modeled as two separate ways.
     reg [   31:0] datas0 [DEPTH - 1:0][D - 1:0];
     reg [   31:0] datas1 [DEPTH - 1:0][D - 1:0];
@@ -91,183 +96,217 @@ module cache (
     reg [1:0] valid [DEPTH - 1:0];
     reg       lru   [DEPTH - 1:0];
 
-    // FSM States
-    localparam IDLE = 3'd0;
-    localparam READ_MISS = 3'd1;
-    localparam WRITE_MISS = 3'd2;
-    localparam WRITE_MEM = 3'd3;
+    // =========================================================================
+    // Address Decomposition
+    // =========================================================================
+    // Current request address breakdown
+    wire [T-1:0] req_tag        = i_req_addr[31 : O+S];
+    wire [S-1:0] req_set        = i_req_addr[O+S-1 : O];
+    wire [1:0]   req_word       = i_req_addr[3:2];
+    
+    // Latched request address breakdown (for miss handling)
+    wire [T-1:0] latched_tag    = latched_addr[31 : O+S];
+    wire [S-1:0] latched_set    = latched_addr[O+S-1 : O];
+    wire [1:0]   latched_word   = latched_addr[3:2];
+    wire [31:0]  line_base_addr = {latched_addr[31:O], {O{1'b0}}};
 
-    reg [2:0] state, next_state;
-    reg [1:0] word_cnt, next_word_cnt;
-    reg [31:0] req_addr_reg;
-    reg [31:0] req_wdata_reg;
-    reg [3:0] req_mask_reg;
-    reg req_is_write;
-    reg victim_way_reg;  // Latched victim way at start of miss
+    // =========================================================================
+    // Hit Detection
+    // =========================================================================
+    wire hit_way0   = valid[req_set][0] && (tags0[req_set] == req_tag);
+    wire hit_way1   = valid[req_set][1] && (tags1[req_set] == req_tag);
+    wire cache_hit  = hit_way0 || hit_way1;
+    wire req_active = i_req_ren || i_req_wen;
 
-    // Address decomposition
-    wire [T-1:0] tag = i_req_addr[31:O+S];
-    wire [S-1:0] set_idx = i_req_addr[O+S-1:O];
-    wire [1:0] word_offset = i_req_addr[3:2];
+    // =========================================================================
+    // Read Data Path
+    // =========================================================================
+    wire [31:0] way0_data = datas0[req_set][req_word];
+    wire [31:0] way1_data = datas1[req_set][req_word];
+    wire [31:0] hit_data  = hit_way1 ? way1_data : way0_data;
+    
+    // Apply read mask (zero out masked bytes)
+    assign o_res_rdata = {
+        i_req_mask[3] ? hit_data[31:24] : 8'h00,
+        i_req_mask[2] ? hit_data[23:16] : 8'h00,
+        i_req_mask[1] ? hit_data[15:8]  : 8'h00,
+        i_req_mask[0] ? hit_data[7:0]   : 8'h00
+    };
 
-    wire [T-1:0] tag_reg = req_addr_reg[31:O+S];
-    wire [S-1:0] set_idx_reg = req_addr_reg[O+S-1:O];
-    wire [1:0] word_offset_reg = req_addr_reg[3:2];
+    // =========================================================================
+    // FSM State & Control Registers
+    // =========================================================================
+    reg [1:0]  state, next_state;
+    reg [1:0]  word_cnt;              // Current word being fetched (0-3)
+    reg        req_pending;           // Memory request in flight for current word
+    reg        victim_way;            // Which way to fill (latched at miss start)
+    reg [31:0] latched_addr;          // Latched request address
+    reg [31:0] latched_wdata;         // Latched write data
+    reg [3:0]  latched_mask;          // Latched byte mask
 
-    // Cache hit detection
-    wire hit0 = valid[set_idx][0] && (tags0[set_idx] == tag);
-    wire hit1 = valid[set_idx][1] && (tags1[set_idx] == tag);
-    wire cache_hit = hit0 || hit1;
-    wire hit_way = hit1;
+    // Busy when processing a miss OR when a new request misses
+    assign o_busy = (state != IDLE) || (req_active && !cache_hit);
 
-    // victim_way_reg is latched when miss starts (see req latch logic above)
-    // This prevents LRU updates during fill from changing which way we write to
+    // =========================================================================
+    // Byte-Masked Write Data Computation
+    // =========================================================================
+    // For write-miss: merge new data with data just fetched into cache
+    wire [31:0] cache_data_for_merge = (victim_way == 1'b0) 
+                                     ? datas0[latched_set][latched_word]
+                                     : datas1[latched_set][latched_word];
+    
+    wire [31:0] merged_write_data = {
+        latched_mask[3] ? latched_wdata[31:24] : cache_data_for_merge[31:24],
+        latched_mask[2] ? latched_wdata[23:16] : cache_data_for_merge[23:16],
+        latched_mask[1] ? latched_wdata[15:8]  : cache_data_for_merge[15:8],
+        latched_mask[0] ? latched_wdata[7:0]   : cache_data_for_merge[7:0]
+    };
 
-    // Read data selection with byte masking
-    wire [31:0] raw_data0 = datas0[set_idx][word_offset];
-    wire [31:0] raw_data1 = datas1[set_idx][word_offset];
-    wire [31:0] hit_data = hit1 ? raw_data1 : raw_data0;
+    // For write-hit: merge new data with existing cache data
+    wire [31:0] way0_merged = {
+        i_req_mask[3] ? i_req_wdata[31:24] : way0_data[31:24],
+        i_req_mask[2] ? i_req_wdata[23:16] : way0_data[23:16],
+        i_req_mask[1] ? i_req_wdata[15:8]  : way0_data[15:8],
+        i_req_mask[0] ? i_req_wdata[7:0]   : way0_data[7:0]
+    };
+    
+    wire [31:0] way1_merged = {
+        i_req_mask[3] ? i_req_wdata[31:24] : way1_data[31:24],
+        i_req_mask[2] ? i_req_wdata[23:16] : way1_data[23:16],
+        i_req_mask[1] ? i_req_wdata[15:8]  : way1_data[15:8],
+        i_req_mask[0] ? i_req_wdata[7:0]   : way1_data[7:0]
+    };
 
-    // Apply byte mask to read data
-    wire [31:0] masked_rdata;
-    assign masked_rdata[7:0]   = i_req_mask[0] ? hit_data[7:0]   : 8'h00;
-    assign masked_rdata[15:8]  = i_req_mask[1] ? hit_data[15:8]  : 8'h00;
-    assign masked_rdata[23:16] = i_req_mask[2] ? hit_data[23:16] : 8'h00;
-    assign masked_rdata[31:24] = i_req_mask[3] ? hit_data[31:24] : 8'h00;
+    // =========================================================================
+    // Memory Interface
+    // =========================================================================
+    reg [31:0] mem_addr;
+    reg        mem_ren, mem_wen;
+    reg [31:0] mem_wdata;
+    
+    assign o_mem_addr  = mem_addr;
+    assign o_mem_ren   = mem_ren;
+    assign o_mem_wen   = mem_wen;
+    assign o_mem_wdata = mem_wdata;
 
-    assign o_res_rdata = masked_rdata;
-
-    // Memory interface
-    reg [31:0] mem_addr_reg;
-    reg mem_ren_reg, mem_wen_reg;
-    reg [31:0] mem_wdata_reg;
-
-    assign o_mem_addr = mem_addr_reg;
-    assign o_mem_ren = mem_ren_reg;
-    assign o_mem_wen = mem_wen_reg;
-    assign o_mem_wdata = mem_wdata_reg;
-
-    // Busy signal
-    assign o_busy = (state != IDLE) || 
-                    ((i_req_ren || i_req_wen) && !cache_hit);
-
-    // FSM state transition
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            state <= IDLE;
-            word_cnt <= 2'b00;
-        end else begin
-            state <= next_state;
-            word_cnt <= next_word_cnt;
-        end
-    end
-
-    // Latch request on miss (including victim way selection)
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            req_addr_reg <= 32'h0;
-            req_wdata_reg <= 32'h0;
-            req_mask_reg <= 4'h0;
-            req_is_write <= 1'b0;
-            victim_way_reg <= 1'b0;
-        end else if (state == IDLE && (i_req_ren || i_req_wen) && !cache_hit) begin
-            req_addr_reg <= i_req_addr;
-            req_wdata_reg <= i_req_wdata;
-            req_mask_reg <= i_req_mask;
-            req_is_write <= i_req_wen;
-            // Latch victim way NOW before LRU gets updated during the fill
-            victim_way_reg <= lru[set_idx];
-        end
-    end
-
-    // Next state logic
     always @(*) begin
-        next_state = state;
+        mem_addr  = 32'h0;
+        mem_ren   = 1'b0;
+        mem_wen   = 1'b0;
+        mem_wdata = 32'h0;
+
+        case (state)
+            READ_MISS, WRITE_MISS: begin
+                // Fetch cache line: base address + word offset
+                mem_addr = line_base_addr + {28'b0, word_cnt, 2'b00};
+                mem_ren  = i_mem_ready && !req_pending;
+            end
+            
+            WRITE_MEM: begin
+                // Write-through to memory
+                mem_addr  = latched_addr;
+                mem_wen   = i_mem_ready;
+                mem_wdata = merged_write_data;
+            end
+        endcase
+    end
+
+    // =========================================================================
+    // FSM Next State Logic
+    // =========================================================================
+    reg [1:0] next_word_cnt;
+    wire      line_fill_done = (word_cnt == 2'd3) && i_mem_valid;
+    
+    always @(*) begin
+        next_state    = state;
         next_word_cnt = word_cnt;
 
         case (state)
             IDLE: begin
-                if ((i_req_ren || i_req_wen) && !cache_hit) begin
-                    if (i_req_ren) begin
-                        next_state = READ_MISS;
-                        next_word_cnt = 2'b00;
-                    end else begin
-                        next_state = WRITE_MISS;
-                        next_word_cnt = 2'b00;
-                    end
+                if (req_active && !cache_hit) begin
+                    next_state    = i_req_ren ? READ_MISS : WRITE_MISS;
+                    next_word_cnt = 2'b00;
                 end
             end
 
             READ_MISS: begin
                 if (i_mem_valid) begin
-                    if (word_cnt == 2'd3) begin
-                        next_state = IDLE;
+                    next_word_cnt = word_cnt + 1'b1;
+                    if (line_fill_done) begin
+                        next_state    = IDLE;
                         next_word_cnt = 2'b00;
-                    end else begin
-                        next_word_cnt = word_cnt + 1;
                     end
                 end
             end
 
             WRITE_MISS: begin
                 if (i_mem_valid) begin
-                    if (word_cnt == 2'd3) begin
-                        next_state = WRITE_MEM;
+                    next_word_cnt = word_cnt + 1'b1;
+                    if (line_fill_done) begin
+                        next_state    = WRITE_MEM;
                         next_word_cnt = 2'b00;
-                    end else begin
-                        next_word_cnt = word_cnt + 1;
                     end
                 end
             end
 
             WRITE_MEM: begin
-                if (i_mem_valid) begin
+                // Write accepted - return to idle
+                if (i_mem_ready)
                     next_state = IDLE;
-                end
             end
         endcase
     end
 
-    // Compute merged write data for WRITE_MEM (after miss - cache has filled data)
-    wire [31:0] cache_word_data = (victim_way_reg == 1'b0) ? 
-                                   datas0[set_idx_reg][word_offset_reg] : 
-                                   datas1[set_idx_reg][word_offset_reg];
-    wire [31:0] merged_miss_wdata;
-    assign merged_miss_wdata[7:0]   = req_mask_reg[0] ? req_wdata_reg[7:0]   : cache_word_data[7:0];
-    assign merged_miss_wdata[15:8]  = req_mask_reg[1] ? req_wdata_reg[15:8]  : cache_word_data[15:8];
-    assign merged_miss_wdata[23:16] = req_mask_reg[2] ? req_wdata_reg[23:16] : cache_word_data[23:16];
-    assign merged_miss_wdata[31:24] = req_mask_reg[3] ? req_wdata_reg[31:24] : cache_word_data[31:24];
-
-    // Memory control signals
-    always @(*) begin
-        mem_addr_reg = 32'h0;
-        mem_ren_reg = 1'b0;
-        mem_wen_reg = 1'b0;
-        mem_wdata_reg = 32'h0;
-
-        case (state)
-            READ_MISS, WRITE_MISS: begin
-                mem_addr_reg = {req_addr_reg[31:O], word_cnt, 2'b00};
-                mem_ren_reg = i_mem_ready;
-                mem_wen_reg = 1'b0;
-            end
-
-            WRITE_MEM: begin
-                mem_addr_reg = req_addr_reg;
-                mem_ren_reg = 1'b0;
-                mem_wen_reg = i_mem_ready;
-                mem_wdata_reg = merged_miss_wdata;
-            end
-        endcase
-    end
-
-    // Cache update logic
-    integer i, j;
+    // =========================================================================
+    // FSM State Register & Request Tracking
+    // =========================================================================
     always @(posedge i_clk) begin
         if (i_rst) begin
+            state       <= IDLE;
+            word_cnt    <= 2'b00;
+            req_pending <= 1'b0;
+        end else begin
+            state    <= next_state;
+            word_cnt <= next_word_cnt;
+            
+            // Track in-flight memory requests to prevent duplicates
+            if (state == IDLE || state == WRITE_MEM)
+                req_pending <= 1'b0;
+            else if ((state == READ_MISS || state == WRITE_MISS) && i_mem_ready && !req_pending)
+                req_pending <= 1'b1;
+            else if (i_mem_valid)
+                req_pending <= 1'b0;
+        end
+    end
+
+    // =========================================================================
+    // Latch Request on Miss
+    // =========================================================================
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            latched_addr  <= 32'h0;
+            latched_wdata <= 32'h0;
+            latched_mask  <= 4'h0;
+            victim_way    <= 1'b0;
+        end else if (state == IDLE && req_active && !cache_hit) begin
+            latched_addr  <= i_req_addr;
+            latched_wdata <= i_req_wdata;
+            latched_mask  <= i_req_mask;
+            victim_way    <= lru[req_set];  // Latch before LRU updates
+        end
+    end
+
+    // =========================================================================
+    // Cache Update Logic
+    // =========================================================================
+    integer i, j;
+    
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            // Reset all metadata (data arrays don't need reset)
             for (i = 0; i < DEPTH; i = i + 1) begin
                 valid[i] <= 2'b00;
-                lru[i] <= 1'b0;
+                lru[i]   <= 1'b0;
                 tags0[i] <= {T{1'b0}};
                 tags1[i] <= {T{1'b0}};
                 for (j = 0; j < D; j = j + 1) begin
@@ -276,89 +315,54 @@ module cache (
                 end
             end
         end else begin
-            // Handle cache hits
+            
+            // -----------------------------------------------------------------
+            // Cache Hit Handling
+            // -----------------------------------------------------------------
             if (state == IDLE && cache_hit) begin
-                // Update LRU - accessed way becomes MRU, so OTHER way becomes victim
-                // If hit0, way 0 is MRU, so way 1 (lru=1) is next victim
-                // If hit1, way 1 is MRU, so way 0 (lru=0) is next victim
-                lru[set_idx] <= hit0;
-
-                // Handle writes on hit
+                // Update LRU: mark accessed way as MRU
+                lru[req_set] <= hit_way0;  // If hit way0, next victim is way1 (lru=1)
+                
+                // Write hit: update cache with masked data
                 if (i_req_wen) begin
-                    if (hit0) begin
-                        datas0[set_idx][word_offset] <= 
-                            {i_req_mask[3] ? i_req_wdata[31:24] : datas0[set_idx][word_offset][31:24],
-                             i_req_mask[2] ? i_req_wdata[23:16] : datas0[set_idx][word_offset][23:16],
-                             i_req_mask[1] ? i_req_wdata[15:8]  : datas0[set_idx][word_offset][15:8],
-                             i_req_mask[0] ? i_req_wdata[7:0]   : datas0[set_idx][word_offset][7:0]};
-                    end else begin
-                        datas1[set_idx][word_offset] <= 
-                            {i_req_mask[3] ? i_req_wdata[31:24] : datas1[set_idx][word_offset][31:24],
-                             i_req_mask[2] ? i_req_wdata[23:16] : datas1[set_idx][word_offset][23:16],
-                             i_req_mask[1] ? i_req_wdata[15:8]  : datas1[set_idx][word_offset][15:8],
-                             i_req_mask[0] ? i_req_wdata[7:0]   : datas1[set_idx][word_offset][7:0]};
+                    if (hit_way0)
+                        datas0[req_set][req_word] <= way0_merged;
+                    else
+                        datas1[req_set][req_word] <= way1_merged;
+                end
+            end
+
+            // -----------------------------------------------------------------
+            // Cache Line Fill (READ_MISS or WRITE_MISS)
+            // -----------------------------------------------------------------
+            if ((state == READ_MISS || state == WRITE_MISS) && i_mem_valid) begin
+                if (victim_way == 1'b0) begin
+                    datas0[latched_set][word_cnt] <= i_mem_rdata;
+                    if (line_fill_done) begin
+                        tags0[latched_set]        <= latched_tag;
+                        valid[latched_set][0]     <= 1'b1;
+                        lru[latched_set]          <= 1'b1;  // Way 0 is MRU, evict way 1 next
+                    end
+                end else begin
+                    datas1[latched_set][word_cnt] <= i_mem_rdata;
+                    if (line_fill_done) begin
+                        tags1[latched_set]        <= latched_tag;
+                        valid[latched_set][1]     <= 1'b1;
+                        lru[latched_set]          <= 1'b0;  // Way 1 is MRU, evict way 0 next
                     end
                 end
             end
 
-            // Handle read miss - fill cache line
-            if (state == READ_MISS && i_mem_valid) begin
-                if (victim_way_reg == 1'b0) begin
-                    datas0[set_idx_reg][word_cnt] <= i_mem_rdata;
-                    if (word_cnt == 2'd3) begin
-                        tags0[set_idx_reg] <= tag_reg;
-                        valid[set_idx_reg][0] <= 1'b1;
-                        // Way 0 is now MRU, so way 1 is next victim (lru=1)
-                        lru[set_idx_reg] <= 1'b1;
-                    end
-                end else begin
-                    datas1[set_idx_reg][word_cnt] <= i_mem_rdata;
-                    if (word_cnt == 2'd3) begin
-                        tags1[set_idx_reg] <= tag_reg;
-                        valid[set_idx_reg][1] <= 1'b1;
-                        // Way 1 is now MRU, so way 0 is next victim (lru=0)
-                        lru[set_idx_reg] <= 1'b0;
-                    end
-                end
+            // -----------------------------------------------------------------
+            // Write-Through to Cache (after line fill completes)
+            // -----------------------------------------------------------------
+            if (state == WRITE_MEM && i_mem_ready) begin
+                if (victim_way == 1'b0)
+                    datas0[latched_set][latched_word] <= merged_write_data;
+                else
+                    datas1[latched_set][latched_word] <= merged_write_data;
             end
-
-            // Handle write miss - fill cache line then write
-            if (state == WRITE_MISS && i_mem_valid) begin
-                if (victim_way_reg == 1'b0) begin
-                    datas0[set_idx_reg][word_cnt] <= i_mem_rdata;
-                    if (word_cnt == 2'd3) begin
-                        tags0[set_idx_reg] <= tag_reg;
-                        valid[set_idx_reg][0] <= 1'b1;
-                        // Way 0 is now MRU, so way 1 is next victim (lru=1)
-                        lru[set_idx_reg] <= 1'b1;
-                    end
-                end else begin
-                    datas1[set_idx_reg][word_cnt] <= i_mem_rdata;
-                    if (word_cnt == 2'd3) begin
-                        tags1[set_idx_reg] <= tag_reg;
-                        valid[set_idx_reg][1] <= 1'b1;
-                        // Way 1 is now MRU, so way 0 is next victim (lru=0)
-                        lru[set_idx_reg] <= 1'b0;
-                    end
-                end
-            end
-
-            // Apply the write after filling the line
-            if (state == WRITE_MEM && i_mem_valid) begin
-                if (victim_way_reg == 1'b0) begin
-                    datas0[set_idx_reg][word_offset_reg] <= 
-                        {req_mask_reg[3] ? req_wdata_reg[31:24] : datas0[set_idx_reg][word_offset_reg][31:24],
-                         req_mask_reg[2] ? req_wdata_reg[23:16] : datas0[set_idx_reg][word_offset_reg][23:16],
-                         req_mask_reg[1] ? req_wdata_reg[15:8]  : datas0[set_idx_reg][word_offset_reg][15:8],
-                         req_mask_reg[0] ? req_wdata_reg[7:0]   : datas0[set_idx_reg][word_offset_reg][7:0]};
-                end else begin
-                    datas1[set_idx_reg][word_offset_reg] <= 
-                        {req_mask_reg[3] ? req_wdata_reg[31:24] : datas1[set_idx_reg][word_offset_reg][31:24],
-                         req_mask_reg[2] ? req_wdata_reg[23:16] : datas1[set_idx_reg][word_offset_reg][23:16],
-                         req_mask_reg[1] ? req_wdata_reg[15:8]  : datas1[set_idx_reg][word_offset_reg][15:8],
-                         req_mask_reg[0] ? req_wdata_reg[7:0]   : datas1[set_idx_reg][word_offset_reg][7:0]};
-                end
-            end
+            
         end
     end
 
