@@ -6,9 +6,11 @@
 # If no program is specified, all programs will be run sequentially
 #
 # Options:
-#   --no-compile : Skip compilation step (compile once at start for all programs)
-#   --copy-only  : Only copy the program, don't compile or run
-#   --stop-on-error : Stop iteration if any program fails
+#   --no-compile      : Skip compilation step (compile once at start for all programs)
+#   --copy-only       : Only copy the program, don't compile or run
+#   --stop-on-error   : Stop iteration if any program fails
+#   --list            : List all available programs and exit
+#   --help, -h        : Show this help message
 
 # Color codes for output
 RED='\033[0;31m'
@@ -42,6 +44,19 @@ while [ $# -gt 0 ]; do
             STOP_ON_ERROR=true
             shift
             ;;
+        --list|-l)
+            echo -e "${CYAN}Available programs in ../programs/:${NC}"
+            echo -e "${CYAN}═══════════════════════════════════════${NC}"
+            ls -1 ../programs/*.mem 2>/dev/null | while read -r prog; do
+                basename "$prog"
+            done | nl -w2 -s'. '
+            echo ""
+            echo -e "${BLUE}Usage: ./run_program.sh [program_name] [options]${NC}"
+            echo -e "${BLUE}       ./run_program.sh              ${NC}${GREEN}# Run all programs${NC}"
+            echo -e "${BLUE}       ./run_program.sh 01add       ${NC}${GREEN}# Run single program${NC}"
+            echo -e "${BLUE}       ./run_program.sh --list      ${NC}${GREEN}# Show this list${NC}"
+            exit 0
+            ;;
         --help|-h)
             echo "Usage: $0 [program_name] [options]"
             echo ""
@@ -51,14 +66,19 @@ while [ $# -gt 0 ]; do
             echo "  --no-compile      : Skip compilation step"
             echo "  --copy-only       : Only copy the program, don't compile or run"
             echo "  --stop-on-error   : Stop iteration if any program fails"
+            echo "  --list, -l        : List all available programs"
             echo "  --help, -h        : Show this help message"
             echo ""
-            echo "Available programs:"
-            ls -1 ../programs/ | sed 's/^/  /'
+            echo "Examples:"
+            echo "  $0                  # Run all programs"
+            echo "  $0 01add            # Run single program"
+            echo "  $0 --list           # List all programs"
+            echo "  $0 --stop-on-error  # Run all, stop on first error"
             exit 0
             ;;
         -*)
             echo -e "${RED}Unknown option: $1${NC}"
+            echo "Use --help for usage information"
             exit 1
             ;;
         *)
@@ -73,13 +93,13 @@ if [ -z "$PROGRAM_NAME" ]; then
     RUN_ALL=true
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║  Running ALL programs in ../programs/                     ║${NC}"
-    echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
     # Compile once at the beginning
     if [ "$COMPILE" = true ]; then
         echo -e "${BLUE}Compiling testbench (one-time)...${NC}"
-        iverilog -o simv_student ../rtl/*.v tb.v
+        iverilog -o simv_student ../rtl/*.v tb.v tb_memory.v
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✓ Compilation successful${NC}"
             echo ""
@@ -118,8 +138,8 @@ if [ -z "$PROGRAM_NAME" ]; then
         
         # Run if requested
         if [ "$RUN" = true ]; then
-            vvp simv_student
-            if [ $? -eq 0 ]; then
+            vvp simv_student 2>&1 | tail -n 20
+            if [ ${PIPESTATUS[0]} -eq 0 ]; then
                 echo -e "${GREEN}✓ $PROG_NAME completed successfully${NC}"
                 PASSED=$((PASSED + 1))
             else
@@ -168,6 +188,8 @@ if [ ! -f "$PROGRAM_PATH" ]; then
     echo ""
     echo "Available programs:"
     ls -1 ../programs/ | sed 's/^/  /'
+    echo ""
+    echo "Use --list to see all available programs"
     exit 1
 fi
 
@@ -184,7 +206,7 @@ fi
 # Compile if requested
 if [ "$COMPILE" = true ]; then
     echo -e "${BLUE}Compiling...${NC}"
-    iverilog -o simv_student ../rtl/*.v tb.v
+    iverilog -o simv_student ../rtl/*.v tb.v tb_memory.v
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Compilation successful${NC}"
     else

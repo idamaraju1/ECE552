@@ -1,40 +1,129 @@
 `default_nettype none
 
-// Comment/uncomment this line to enable/disable cache
-//`define USE_CACHE
-
 module hart #(
+    // After reset, the program counter (PC) should be initialized to this
+    // address and start executing instructions from there.
     parameter RESET_ADDR = 32'h00000000
 ) (
     // Global clock.
     input  wire        i_clk,
     // Synchronous active-high reset.
     input  wire        i_rst,
-    // Instruction memory interface (external memory)
+    // Instruction fetch goes through a read only instruction memory (imem)
+    // port. The port accepts a 32-bit address (e.g. from the program counter)
+    // per cycle and combinationally returns a 32-bit instruction word. This
+    // is not representative of a realistic memory interface; it has been
+    // modeled as more similar to a DFF or SRAM to simplify phase 3. In
+    // later phases, you will replace this with a more realistic memory.
+    //
+    // 32-bit read address for the instruction memory. This is expected to be
+    // 4 byte aligned - that is, the two LSBs should be zero.
     input  wire        i_imem_ready,
     output wire [31:0] o_imem_raddr,
     output wire        o_imem_ren,
+    // Instruction word fetched from memory, available on the same cycle.
     input  wire        i_imem_valid,
     input  wire [31:0] i_imem_rdata,
-    // Data memory interface (external memory)
+    // Data memory accesses go through a separate read/write data memory (dmem)
+    // that is shared between read (load) and write (stored). The port accepts
+    // a 32-bit address, read or write enable, and mask (explained below) each
+    // cycle. Reads are combinational - values are available immediately after
+    // updating the address and asserting read enable. Writes occur on (and
+    // are visible at) the next clock edge.
+    //
+    // Read/write address for the data memory. This should be 32-bit aligned
+    // (i.e. the two LSB should be zero). See `o_dmem_mask` for how to perform
+    // half-word and byte accesses at unaligned addresses.
     input  wire        i_dmem_ready,
     output wire [31:0] o_dmem_addr,
+    // When asserted, the memory will perform a read at the aligned address
+    // specified by `i_addr` and return the 32-bit word at that address
+    // immediately (i.e. combinationally). It is illegal to assert this and
+    // `o_dmem_wen` on the same cycle.
     output wire        o_dmem_ren,
+    // When asserted, the memory will perform a write to the aligned address
+    // `o_dmem_addr`. When asserted, the memory will write the bytes in
+    // `o_dmem_wdata` (specified by the mask) to memory at the specified
+    // address on the next rising clock edge. It is illegal to assert this and
+    // `o_dmem_ren` on the same cycle.
     output wire        o_dmem_wen,
+    // The 32-bit word to write to memory when `o_dmem_wen` is asserted. When
+    // write enable is asserted, the byte lanes specified by the mask will be
+    // written to the memory word at the aligned address at the next rising
+    // clock edge. The other byte lanes of the word will be unaffected.
     output wire [31:0] o_dmem_wdata,
+    // The dmem interface expects word (32 bit) aligned addresses. However,
+    // WISC-25 supports byte and half-word loads and stores at unaligned and
+    // 16-bit aligned addresses, respectively. To support this, the access
+    // mask specifies which bytes within the 32-bit word are actually read
+    // from or written to memory.
+    //
+    // To perform a half-word read at address 0x00001002, align `o_dmem_addr`
+    // to 0x00001000, assert `o_dmem_ren`, and set the mask to 0b1100 to
+    // indicate that only the upper two bytes should be read. Only the upper
+    // two bytes of `i_dmem_rdata` can be assumed to have valid data; to
+    // calculate the final value of the `lh[u]` instruction, shift the rdata
+    // word right by 16 bits and sign/zero extend as appropriate.
+    //
+    // To perform a byte write at address 0x00002003, align `o_dmem_addr` to
+    // `0x00002003`, assert `o_dmem_wen`, and set the mask to 0b1000 to
+    // indicate that only the upper byte should be written. On the next clock
+    // cycle, the upper byte of `o_dmem_wdata` will be written to memory, with
+    // the other three bytes of the aligned word unaffected. Remember to shift
+    // the value of the `sb` instruction left by 24 bits to place it in the
+    // appropriate byte lane.
     output wire [ 3:0] o_dmem_mask,
+    // The 32-bit word read from data memory. When `o_dmem_ren` is asserted,
+    // this will immediately reflect the contents of memory at the specified
+    // address, for the bytes enabled by the mask. When read enable is not
+    // asserted, or for bytes not set in the mask, the value is undefined.
     input  wire        i_dmem_valid,
     input  wire [31:0] i_dmem_rdata,
-    // Retire interface
+    // The output `retire` interface is used to signal to the testbench that
+    // the CPU has completed and retired an instruction. A single cycle
+    // implementation will assert this every cycle; however, a pipelined
+    // implementation that needs to stall (due to internal hazards or waiting
+    // on memory accesses) will not assert the signal on cycles where the
+    // instruction in the writeback stage is not retiring.
+    //
+    // Asserted when an instruction is being retired this cycle. If this is
+    // not asserted, the other retire signals are ignored and may be left invalid.
     output wire        o_retire_valid,
+    // The 32 bit instruction word of the instrution being retired. This
+    // should be the unmodified instruction word fetched from instruction
+    // memory.
     output wire [31:0] o_retire_inst,
+    // Asserted if the instruction produced a trap, due to an illegal
+    // instruction, unaligned data memory access, or unaligned instruction
+    // address on a taken branch or jump.
     output wire        o_retire_trap,
+    // Asserted if the instruction is an `ebreak` instruction used to halt the
+    // processor. This is used for debugging and testing purposes to end
+    // a program.
     output wire        o_retire_halt,
+    // The first register address read by the instruction being retired. If
+    // the instruction does not read from a register (like `lui`), this
+    // should be 5'd0.
     output wire [ 4:0] o_retire_rs1_raddr,
+    // The second register address read by the instruction being retired. If
+    // the instruction does not read from a second register (like `addi`), this
+    // should be 5'd0.
     output wire [ 4:0] o_retire_rs2_raddr,
+    // The first source register data read from the register file (in the
+    // decode stage) for the instruction being retired. If rs1 is 5'd0, this
+    // should also be 32'd0.
     output wire [31:0] o_retire_rs1_rdata,
+    // The second source register data read from the register file (in the
+    // decode stage) for the instruction being retired. If rs2 is 5'd0, this
+    // should also be 32'd0.
     output wire [31:0] o_retire_rs2_rdata,
+    // The destination register address written by the instruction being
+    // retired. If the instruction does not write to a register (like `sw`),
+    // this should be 5'd0.
     output wire [ 4:0] o_retire_rd_waddr,
+    // The destination register data written to the register file in the
+    // writeback stage by this instruction. If rd is 5'd0, this field is
+    // ignored and can be treated as a don't care.
     output wire [31:0] o_retire_rd_wdata,
     output wire [31:0] o_retire_dmem_addr,
     output wire [ 3:0] o_retire_dmem_mask,
@@ -42,352 +131,139 @@ module hart #(
     output wire        o_retire_dmem_wen,
     output wire [31:0] o_retire_dmem_rdata,
     output wire [31:0] o_retire_dmem_wdata,
+    // The current program counter of the instruction being retired - i.e.
+    // the instruction memory address that the instruction was fetched from.
     output wire [31:0] o_retire_pc,
+    // the next program counter after the instruction is retired. For most
+    // instructions, this is `o_retire_pc + 4`, but must be the branch or jump
+    // target for *taken* branches and jumps.
     output wire [31:0] o_retire_next_pc
 
 `ifdef RISCV_FORMAL
-    ,`RVFI_OUTPUTS
+    ,`RVFI_OUTPUTS,
 `endif
 );
-    
-    ////////////////////////////////////////////////////////////////////////////////
-    // ALL WIRE DECLARATIONS
-    ////////////////////////////////////////////////////////////////////////////////
-    
-    // IF Stage wires
-    wire [31:0] if_pc;
-    wire [31:0] if_next_pc;
-    
-    // IF/ID Stage wires
-    wire [31:0] id_pc;
-    wire [31:0] id_instruction;
-    wire [31:0] id_pc_plus_4;
-    wire        id_valid;
-    wire        flush_if_id;
-    
-    // ID Stage wires - Control signals
-    wire        id_RegWrite;
-    wire [5:0]  id_inst_format;
-    wire        id_ALUSrc1;
-    wire        id_ALUSrc2;
-    wire [1:0]  id_ALUop;
-    wire        id_lui;
-    wire        id_MemtoReg;
-    wire        id_Jump;
-    wire        id_Branch;
-    wire        id_dmem_ren;
-    wire        id_dmem_wen;
-    wire        id_retire_halt;
-    wire        id_retire_trap;
-    
-    // ID Stage wires - Register file
-    wire [4:0]  id_rs1_addr;
-    wire [4:0]  id_rs2_addr;
-    wire [4:0]  id_rd_addr;
-    wire [31:0] id_rs1_rdata;
-    wire [31:0] id_rs2_rdata;
-    
-    // ID Stage wires - Immediate and ALU control
-    wire [31:0] id_immediate;
-    wire [3:0]  id_alu_ctrl;
-    wire        id_is_bne;
-    
-    // ID/EX Stage wires
-    wire [31:0] ex_pc;
-    wire [31:0] ex_pc_plus_4;
-    wire [31:0] ex_rs1_rdata;
-    wire [31:0] ex_rs2_rdata;
-    wire [31:0] ex_immediate;
-    wire [31:0] ex_instruction;
-    wire [4:0]  ex_rs1_addr;
-    wire [4:0]  ex_rs2_addr;
-    wire [4:0]  ex_rd_addr;
-    wire        ex_alu_src1;
-    wire        ex_alu_src2;
-    wire [3:0]  ex_alu_ctrl;
-    wire        ex_is_bne;
-    wire        ex_lui;
-    wire        ex_branch;
-    wire        ex_jump;
-    wire        ex_mem_read;
-    wire        ex_mem_write;
-    wire        ex_reg_write;
-    wire        ex_mem_to_reg;
-    wire        ex_retire_halt;
-    wire        ex_valid;
-    
-    // EX Stage wires
-    wire [31:0] ex_alu_op1;
-    wire [31:0] ex_alu_op2;
-    wire [31:0] ex_alu_result;
-    wire        ex_branch_condition;
-    wire [31:0] ex_branch_mux;
-    wire [31:0] ex_jump_mux;
-    wire        ex_pc_redirect;
-    wire [31:0] jump_target;
-    wire [31:0] branch_target;
-    wire [31:0] ex_next_pc_target;
-    
-    // EX/MEM Stage wires
-    wire [31:0] mem_alu_result;
-    wire [31:0] mem_pc;
-    wire [31:0] mem_pc_plus_4;
-    wire [31:0] mem_instruction;
-    wire [4:0]  mem_rs1_addr;
-    wire [4:0]  mem_rs2_addr;
-    wire [4:0]  mem_rd_addr;
+
+    // =========================================================================
+    // Cache Stall Signals
+    // =========================================================================
+    // MEM stage signals (forward declared for stall logic)
     wire        mem_mem_read;
     wire        mem_mem_write;
-    wire        mem_reg_write;
-    wire        mem_mem_to_reg;
-    wire        mem_jump;
-    wire        mem_retire_halt;
-    wire [31:0] mem_next_pc_target;
     wire        mem_valid;
     
-    // MEM Stage wires
-    wire [31:0] mem_dmem_addr_aligned;
-    wire [1:0]  mem_byte_offset;
-    wire [3:0]  mem_dmem_mask;
-    wire [31:0] mem_dmem_wdata;
-    wire [31:0] mem_load_data;
+    // Track if we're waiting for a cache miss to complete (registered to break comb loop)
+    reg imem_miss_pending;
+    reg dmem_miss_pending;
     
-    // MEM/WB Stage wires
-    wire [31:0] wb_alu_result;
-    wire [31:0] wb_load_data;
-    wire [31:0] wb_pc_plus_4;
-    wire [31:0] wb_pc;
-    wire [31:0] wb_instruction;
-    wire [4:0]  wb_rs1_addr;
-    wire [4:0]  wb_rs2_addr;
-    wire [4:0]  wb_rd_waddr;
-    wire        wb_jump;
-    wire        wb_mem_to_reg;
-    wire [31:0] wb_next_pc_target;
-    wire        wb_valid;
-    wire [31:0] wb_dmem_addr;
-    wire [3:0]  wb_dmem_mask;
-    wire        wb_dmem_ren;
-    wire        wb_dmem_wen;
-    wire [31:0] wb_dmem_rdata;
-    wire [31:0] wb_dmem_wdata;
-    wire        wb_RegWrite;
-    wire [31:0] wb_rd_wdata;
-    wire        wb_retire_halt;
-    wire [1:0]  wb_mem_byte_offset;
-
-    // Hazards, forwarding, and reset initialization
-    wire        hazard_stall;
-    wire        stall_if_id;
-    wire        stall_pc;
-    wire        flush_id_ex;
-
-    reg first_cycle;
-    reg if_valid;
-    wire pc_write_enable;
-
-    wire [1:0] forward_a;
-    wire [1:0] forward_b;
-
-    wire [31:0] mem_forward_data;
-    wire [31:0] wb_forward_data;
-
-    wire [31:0] forward_rs1_data;
-    wire [31:0] forward_rs2_data;
-
-    wire [31:0] ex_rs1_fwd_data;
-    wire [31:0] ex_rs2_fwd_data;
-    wire [31:0] mem_rs1_fwd_data;
-    wire [31:0] mem_rs2_fwd_data;
-    wire [31:0] wb_rs1_fwd_data;
-    wire [31:0] wb_rs2_fwd_data;
-
-    // Memory read data source (from cache or direct)
-    wire [31:0] mem_rdata_source;
-
-    ////////////////////////////////////////////////////////////////////////////////
-    // CACHE INTEGRATION (or bypass)
-    ////////////////////////////////////////////////////////////////////////////////
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            imem_miss_pending <= 1'b0;
+            dmem_miss_pending <= 1'b0;
+        end else begin
+            // Instruction cache miss tracking
+            if (!imem_miss_pending && !i_imem_ready)
+                imem_miss_pending <= 1'b1;  // Miss just detected
+            else if (imem_miss_pending && i_imem_ready)
+                imem_miss_pending <= 1'b0;  // Miss completed
+            
+            // Data cache miss tracking
+            if (!dmem_miss_pending && mem_valid && (mem_mem_read || mem_mem_write) && !i_dmem_ready)
+                dmem_miss_pending <= 1'b1;  // Miss just detected
+            else if (dmem_miss_pending && i_dmem_ready)
+                dmem_miss_pending <= 1'b0;  // Miss completed
+        end
+    end
     
-`ifdef USE_CACHE
-    // Instruction cache signals
-    wire        icache_busy;
-    wire [31:0] icache_req_addr;
-    wire        icache_req_ren;
-    wire [31:0] icache_res_rdata;
+    // Instruction cache stall: when cache is busy (either new miss or ongoing)
+    wire imem_stall = !i_imem_ready;
     
-    // Data cache signals
-    wire        dcache_busy;
-    wire [31:0] dcache_req_addr;
-    wire        dcache_req_ren;
-    wire        dcache_req_wen;
-    wire [3:0]  dcache_req_mask;
-    wire [31:0] dcache_req_wdata;
-    wire [31:0] dcache_res_rdata;
+    // Data cache stall: when MEM stage needs memory but cache is not ready
+    wire dmem_stall = mem_valid && (mem_mem_read || mem_mem_write) && !i_dmem_ready;
     
-    // Cache stall signals - stall the entire pipeline when either cache is busy
-    wire cache_stall;
-    assign cache_stall = icache_busy | dcache_busy;
+    // Full pipeline stall when data cache is busy
+    wire pipeline_stall = dmem_stall;
     
-    // Memory read data source
-    assign mem_rdata_source = dcache_res_rdata;
-    
-    // Instruction Cache
-    cache icache (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        // External memory interface
-        .i_mem_ready(i_imem_ready),
-        .o_mem_addr(o_imem_raddr),
-        .o_mem_ren(o_imem_ren),
-        .o_mem_wen(),              // Instruction cache is read-only
-        .o_mem_wdata(),            // Instruction cache is read-only
-        .i_mem_rdata(i_imem_rdata),
-        .i_mem_valid(i_imem_valid),
-        // CPU interface
-        .o_busy(icache_busy),
-        .i_req_addr(icache_req_addr),
-        .i_req_ren(icache_req_ren),
-        .i_req_wen(1'b0),          // Instruction cache is read-only
-        .i_req_mask(4'b1111),      // Always full word for instructions
-        .i_req_wdata(32'b0),       // Instruction cache is read-only
-        .o_res_rdata(icache_res_rdata)
-    );
-    
-    // Data Cache
-    cache dcache (
-        .i_clk(i_clk),
-        .i_rst(i_rst),
-        // External memory interface
-        .i_mem_ready(i_dmem_ready),
-        .o_mem_addr(o_dmem_addr),
-        .o_mem_ren(o_dmem_ren),
-        .o_mem_wen(o_dmem_wen),
-        .o_mem_wdata(o_dmem_wdata),
-        .i_mem_rdata(i_dmem_rdata),
-        .i_mem_valid(i_dmem_valid),
-        // CPU interface
-        .o_busy(dcache_busy),
-        .i_req_addr(dcache_req_addr),
-        .i_req_ren(dcache_req_ren),
-        .i_req_wen(dcache_req_wen),
-        .i_req_mask(dcache_req_mask),
-        .i_req_wdata(dcache_req_wdata),
-        .o_res_rdata(dcache_res_rdata)
-    );
-    
-    // Note: dmem_mask is handled internally by the cache
-    assign o_dmem_mask = 4'b1111;  // Cache always does word accesses to memory
-    
-`else
-    // ============================================================================
-    // NO CACHE MODE - Direct memory connection for testing
-    // ============================================================================
-    
-    // No cache stall in bypass mode
-    wire cache_stall;
-    assign cache_stall = 1'b0;
-    
-    // Memory read data source - direct from memory
-    assign mem_rdata_source = i_dmem_rdata;
-    
-    // Instruction memory - direct connection
-    assign o_imem_raddr = if_pc;
-    assign o_imem_ren = 1'b1;  // Always reading instructions
-    
-    // Data memory - direct connection
-    assign o_dmem_addr = mem_dmem_addr_aligned;
-    assign o_dmem_ren = mem_mem_read & mem_valid;
-    assign o_dmem_wen = mem_mem_write & mem_valid;
-    assign o_dmem_wdata = mem_dmem_wdata;
-    assign o_dmem_mask = mem_dmem_mask;
-    
-`endif
-
     ////////////////////////////////////////////////////////////////////////////////
     // IF Stage - Instruction Fetch
     ////////////////////////////////////////////////////////////////////////////////
-
-    // Latch PC if not stalled or halted
-    assign pc_write_enable = ~wb_retire_halt & ~stall_pc & ~cache_stall;
+    wire [31:0] if_pc;
+    wire [31:0] if_next_pc;
+    
+    // Hazard detection signals
+    wire        hazard_stall;
+    
+    // PC write enable: don't update PC when stalled
+    wire pc_write_en;
+    assign pc_write_en = !pipeline_stall && !imem_stall && !hazard_stall;
     
     // PC register
-    pc PC (
+    pc #(.RESET_ADDR(RESET_ADDR)) PC (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_write(pc_write_enable),
+        .i_write(pc_write_en),
         .i_next_pc(if_next_pc),
         .o_pc(if_pc)
     );
-
-    // Setup help for fetch stage on reset
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            first_cycle <= 1'b1;
-            if_valid <= 1'b0;
-        end else if (!cache_stall) begin
-            first_cycle <= 1'b0;
-            if_valid <= 1'b1;
-        end
-    end
-
-    // Update next PC to use branch/jump target, PC + 4, or reset
-    assign if_next_pc =
-        first_cycle       ? 32'h00000000 :
-        ex_pc_redirect    ? ex_jump_mux :
-                            if_pc + 32'd4;
-
-`ifdef USE_CACHE
-    // Instruction cache request - always request current PC
-    assign icache_req_addr = if_pc;
-    // Request when not in first cycle (need PC to be valid)
-    // Don't request during cache stall - cache is handling miss
-    assign icache_req_ren = ~first_cycle & ~cache_stall;
-`endif
+    
+    // Connect PC to instruction memory
+    assign o_imem_raddr = if_pc;
+    // Assert read enable when we want to fetch
+    // Don't deassert immediately on miss (that creates combinational loop)
+    // Deassert only when we're waiting for a pending miss to complete
+    assign o_imem_ren = !pipeline_stall && !imem_miss_pending;
     
     ////////////////////////////////////////////////////////////////////////////////
     // IF/ID Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
+    wire [31:0] id_pc;
+    wire [31:0] id_instruction;
+    wire [31:0] id_pc_plus_4;
+    wire        id_valid;
+    
+    // Control signals for flush (from EX stage branch/jump)
+    wire        ex_branch_taken;
+    wire        ex_jump;
+    wire        ex_valid;
+    wire        flush_if_id;
+    
+    // Stall IF/ID when: pipeline stall, imem stall, or hazard stall
+    wire if_id_stall;
+    assign if_id_stall = pipeline_stall || imem_stall || hazard_stall;
     
     if_id IF_ID (
         .i_clk(i_clk),
         .i_rst(i_rst),
+        .i_stall(if_id_stall),
         .i_flush(flush_if_id),
+        .i_valid(!imem_stall),  // Valid when instruction is available
         .i_pc(if_pc),
+        .i_instruction(i_imem_rdata),
         .i_pc_plus_4(if_pc + 32'd4),
-`ifdef USE_CACHE
-        .i_instruction(icache_res_rdata),
-        .i_valid(if_valid & ~icache_busy),
-`else
-        .i_instruction(i_imem_rdata),  // Direct from memory
-        .i_valid(if_valid),
-`endif
-        .i_stall(stall_if_id | cache_stall),
-        .o_instruction(id_instruction),
         .o_pc(id_pc),
         .o_pc_plus_4(id_pc_plus_4),
+        .o_instruction(id_instruction),
         .o_valid(id_valid)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
     // ID Stage - Instruction Decode
     ////////////////////////////////////////////////////////////////////////////////
-
-    // Hazard unit
-    hazard_unit HZ (
-        .i_mem_read_ex(ex_mem_read),
-        .i_valid_ex(ex_valid),
-        .i_ex_rd(ex_rd_addr),
-        .i_id_rs1(id_rs1_addr),
-        .i_id_rs2(id_rs2_addr),
-        .o_hazard_stall(hazard_stall)
-    );
-
-    // Hazard stall logic
-    assign stall_pc     = hazard_stall;
-    assign stall_if_id  = hazard_stall;
     
-    // Control unit
+    // Control signals
+    wire       id_RegWrite;
+    wire [5:0] id_inst_format;
+    wire       id_ALUSrc1;
+    wire       id_ALUSrc2;
+    wire [1:0] id_ALUop;
+    wire       id_lui;
+    wire       id_MemtoReg;
+    wire       id_Jump;
+    wire       id_Branch;
+    wire       id_dmem_ren;
+    wire       id_dmem_wen;
+    wire       id_retire_halt;
+    
     ctrl Control (
         .i_inst(id_instruction),
         .o_RegWrite(id_RegWrite),
@@ -405,11 +281,23 @@ module hart #(
     );
     
     // Register file addresses
+    wire [4:0] id_rs1_addr;
+    wire [4:0] id_rs2_addr;
+    wire [4:0] id_rd_addr;
+    
     assign id_rs1_addr = id_instruction[19:15];
     assign id_rs2_addr = id_instruction[24:20];
     assign id_rd_addr = id_instruction[11:7];
-
+    
     // Register file (with bypassing enabled)
+    wire [31:0] id_rs1_rdata;
+    wire [31:0] id_rs2_rdata;
+    
+    // Connect writeback from WB stage
+    wire [31:0] wb_rd_wdata;
+    wire [4:0]  wb_rd_waddr;
+    wire        wb_RegWrite;
+    
     rf #(.BYPASS_EN(1)) RegisterFile (
         .i_clk(i_clk),
         .i_rst(i_rst),
@@ -422,6 +310,8 @@ module hart #(
     );
     
     // Immediate generator
+    wire [31:0] id_immediate;
+    
     imm ImmGen (
         .i_inst(id_instruction),
         .i_format(id_inst_format),
@@ -429,6 +319,9 @@ module hart #(
     );
 
     // ALU control
+    wire [3:0] id_alu_ctrl;
+    wire       id_is_bne;
+    
     alu_ctrl ALU_control (
         .i_ALUop(id_ALUop),
         .i_funct3(id_instruction[14:12]),
@@ -438,14 +331,52 @@ module hart #(
     );
     
     ////////////////////////////////////////////////////////////////////////////////
+    // Hazard Detection Unit
+    ////////////////////////////////////////////////////////////////////////////////
+    wire [4:0] ex_rd_addr;
+    wire       ex_mem_read;
+    
+    hazard_unit HazardUnit (
+        .i_mem_read_ex(ex_mem_read),
+        .i_valid_ex(ex_valid),
+        .i_ex_rd(ex_rd_addr),
+        .i_id_rs1(id_rs1_addr),
+        .i_id_rs2(id_rs2_addr),
+        .o_hazard_stall(hazard_stall)
+    );
+    
+    ////////////////////////////////////////////////////////////////////////////////
     // ID/EX Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
+    wire [31:0] ex_pc;
+    wire [31:0] ex_pc_plus_4;
+    wire [31:0] ex_rs1_rdata;
+    wire [31:0] ex_rs2_rdata;
+    wire [31:0] ex_immediate;
+    wire [31:0] ex_instruction;
+    wire [4:0]  ex_rs1_addr;
+    wire [4:0]  ex_rs2_addr;
+    wire        ex_alu_src1;
+    wire        ex_alu_src2;
+    wire [3:0]  ex_alu_ctrl;
+    wire        ex_is_bne;
+    wire        ex_lui;
+    wire        ex_branch;
+    wire        ex_mem_write;
+    wire        ex_reg_write;
+    wire        ex_mem_to_reg;
+    wire        ex_retire_halt;
+    
+    // Flush ID/EX when hazard stall (insert bubble) or branch/jump taken
+    wire flush_id_ex;
+    assign flush_id_ex = hazard_stall || flush_if_id;
     
     id_ex ID_EX (
         .i_clk(i_clk),
-        .i_rst(i_rst), 
+        .i_rst(i_rst),
+        .i_stall(pipeline_stall),
         .i_flush(flush_id_ex),
-        .i_stall(cache_stall),
+        .i_valid(id_valid),
         // Data signals
         .i_pc(id_pc),
         .i_pc_plus_4(id_pc_plus_4),
@@ -470,8 +401,8 @@ module hart #(
         .i_reg_write(id_RegWrite),
         .i_mem_to_reg(id_MemtoReg),
         .i_retire_halt(id_retire_halt),
-        .i_valid(id_valid),
         // Outputs to EX stage
+        .o_valid(ex_valid),
         .o_pc(ex_pc),
         .o_pc_plus_4(ex_pc_plus_4),
         .o_rs1_rdata(ex_rs1_rdata),
@@ -492,51 +423,56 @@ module hart #(
         .o_mem_write(ex_mem_write),
         .o_reg_write(ex_reg_write),
         .o_mem_to_reg(ex_mem_to_reg),
-        .o_retire_halt(ex_retire_halt),
-        .o_valid(ex_valid)
+        .o_retire_halt(ex_retire_halt)
     );
     
     ////////////////////////////////////////////////////////////////////////////////
     // EX Stage - Execute
-    //////////////////////////////////////////////////////////////////////////////// 
-
+    ////////////////////////////////////////////////////////////////////////////////
+    
     // Forwarding unit
-    forward_unit FU (
+    wire [1:0] forward_a;
+    wire [1:0] forward_b;
+    wire [4:0] mem_rd_addr;
+    wire       mem_reg_write;
+    
+    forward_unit ForwardUnit (
         .i_ex_rs1(ex_rs1_addr),
         .i_ex_rs2(ex_rs2_addr),
         .i_mem_reg_write(mem_reg_write),
-        .i_mem_rd(mem_rd_addr),
         .i_wb_reg_write(wb_RegWrite),
+        .i_mem_rd(mem_rd_addr),
         .i_wb_rd(wb_rd_waddr),
         .o_forward_a(forward_a),
         .o_forward_b(forward_b)
     );
-
-    // Compute forwarding data from MEM stage
-    assign mem_forward_data = mem_jump ? mem_pc_plus_4 : mem_alu_result;
-
-    // Compute forwarding data from WB stage
-    assign wb_forward_data = wb_jump ? wb_pc_plus_4 : 
-                            wb_mem_to_reg ? wb_load_data : 
-                            wb_alu_result;
-
-    // Select forwarded data for rs1
-    assign forward_rs1_data =
-        (forward_a == 2'b10) ? mem_forward_data :  // MEM→EX (EX-EX)
-        (forward_a == 2'b01) ? wb_forward_data  :  // WB→EX (MEM-EX)
-                            ex_rs1_rdata;          // From ID/EX
-
-    // Select forwarded data for rs2
-    assign forward_rs2_data =
-        (forward_b == 2'b10) ? mem_forward_data :  // MEM→EX (EX-EX)
-        (forward_b == 2'b01) ? wb_forward_data  :  // WB→EX (MEM-EX)
-                            ex_rs2_rdata;          // From ID/EX
     
-    // ALU operand selection
-    assign ex_alu_op1 = ex_alu_src1 ? (ex_lui ? 32'd0 : ex_pc) : forward_rs1_data;
-    assign ex_alu_op2 = ex_alu_src2 ? ex_immediate : forward_rs2_data;
+    // MEM stage forwarding data (forward declared)
+    wire [31:0] mem_alu_result;
+    
+    // Forwarded operand values
+    wire [31:0] ex_rs1_fwd;
+    wire [31:0] ex_rs2_fwd;
+    
+    assign ex_rs1_fwd = (forward_a == 2'b10) ? mem_alu_result :
+                        (forward_a == 2'b01) ? wb_rd_wdata :
+                        ex_rs1_rdata;
+    
+    assign ex_rs2_fwd = (forward_b == 2'b10) ? mem_alu_result :
+                        (forward_b == 2'b01) ? wb_rd_wdata :
+                        ex_rs2_rdata;
+    
+    // ALU operand selection (after forwarding)
+    wire [31:0] ex_alu_op1;
+    wire [31:0] ex_alu_op2;
+    
+    assign ex_alu_op1 = ex_alu_src1 ? (ex_lui ? 32'd0 : ex_pc) : ex_rs1_fwd;
+    assign ex_alu_op2 = ex_alu_src2 ? ex_immediate : ex_rs2_fwd;
     
     // ALU
+    wire [31:0] ex_alu_result;
+    wire        ex_branch_condition;
+    
     alu ALU (
         .i_op1(ex_alu_op1),
         .i_op2(ex_alu_op2),
@@ -546,36 +482,60 @@ module hart #(
         .o_jump_condition(ex_branch_condition)
     );
     
-    // Branch/Jump logic for next PC
-    assign ex_branch_mux = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : (ex_pc + 32'd4);
-    assign ex_jump_mux = ex_jump ? 
-                              ((~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result) :
-                              ex_branch_mux;
-
-    // PC redirect and flush signals - only when not stalled by cache
-    assign ex_pc_redirect = ((ex_branch & ex_branch_condition) | ex_jump) & ~cache_stall;
-    assign flush_if_id = ex_pc_redirect;
-    assign flush_id_ex = (ex_pc_redirect | hazard_stall) & ~cache_stall;
+    // Branch taken signal
+    assign ex_branch_taken = ex_valid && ex_branch && ex_branch_condition;
     
-    // Propagate next_pc_target to retire target testbench
-    assign jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_alu_result;
-    assign branch_target = (ex_branch & ex_branch_condition) ? (ex_pc + ex_immediate) : ex_pc_plus_4;
-    assign ex_next_pc_target = ex_jump ? jump_target : branch_target;
-
+    // Flush IF/ID when branch taken or jump
+    assign flush_if_id = ex_valid && (ex_branch_taken || ex_jump);
+    
+    // Branch/Jump target calculation
+    wire [31:0] ex_branch_target;
+    wire [31:0] ex_jump_target;
+    wire [31:0] ex_next_pc_target;
+    
+    assign ex_branch_target = ex_pc + ex_immediate;
+    // JALR uses ALU result (rs1 + imm), JAL uses PC + imm
+    assign ex_jump_target = (~ex_instruction[3]) ? {ex_alu_result[31:1], 1'b0} : ex_branch_target;
+    
+    // Next PC target for retire interface
+    assign ex_next_pc_target = ex_jump ? ex_jump_target :
+                               ex_branch_taken ? ex_branch_target :
+                               ex_pc_plus_4;
+    
+    // Next PC logic
+    wire        wb_retire_halt;
+    assign if_next_pc = wb_retire_halt ? if_pc :
+                        (ex_valid && ex_jump) ? ex_jump_target :
+                        ex_branch_taken ? ex_branch_target :
+                        if_pc + 32'd4;
+    
     ////////////////////////////////////////////////////////////////////////////////
     // EX/MEM Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
+    wire [31:0] mem_pc;
+    wire [31:0] mem_pc_plus_4;
+    wire [31:0] mem_instruction;
+    wire [4:0]  mem_rs1_addr;
+    wire [4:0]  mem_rs2_addr;
+    wire        mem_mem_to_reg;
+    wire        mem_jump;
+    wire        mem_retire_halt;
+    wire [31:0] mem_next_pc_target;
+    wire [31:0] mem_rs1_fwd_data;
+    wire [31:0] mem_rs2_fwd_data;
     
     ex_mem EX_MEM (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_stall(cache_stall),
+        .i_stall(pipeline_stall),
+        .i_valid(ex_valid),
         // Computation results
         .i_alu_result(ex_alu_result),
         // Data signals
         .i_pc(ex_pc),
         .i_pc_plus_4(ex_pc_plus_4),
         .i_instruction(ex_instruction),
+        .i_next_pc_target(ex_next_pc_target),
         // Address signals
         .i_rs1_addr(ex_rs1_addr),
         .i_rs2_addr(ex_rs2_addr),
@@ -587,13 +547,15 @@ module hart #(
         .i_mem_to_reg(ex_mem_to_reg),
         .i_jump(ex_jump),
         .i_retire_halt(ex_retire_halt),
-        .i_next_pc_target(ex_next_pc_target),
-        .i_valid(ex_valid),
+        // Forwarded data for store instructions
+        .i_rs1_fwd_data(ex_rs1_fwd),
+        .i_rs2_fwd_data(ex_rs2_fwd),
         // Outputs to MEM stage
         .o_alu_result(mem_alu_result),
         .o_pc(mem_pc),
         .o_pc_plus_4(mem_pc_plus_4),
         .o_instruction(mem_instruction),
+        .o_next_pc_target(mem_next_pc_target),
         .o_rs1_addr(mem_rs1_addr),
         .o_rs2_addr(mem_rs2_addr),
         .o_rd_addr(mem_rd_addr),
@@ -603,12 +565,7 @@ module hart #(
         .o_mem_to_reg(mem_mem_to_reg),
         .o_jump(mem_jump),
         .o_retire_halt(mem_retire_halt),
-        .o_next_pc_target(mem_next_pc_target),
         .o_valid(mem_valid),
-
-        // Forwarding
-        .i_rs1_fwd_data(forward_rs1_data),
-        .i_rs2_fwd_data(forward_rs2_data),
         .o_rs1_fwd_data(mem_rs1_fwd_data),
         .o_rs2_fwd_data(mem_rs2_fwd_data)
     );
@@ -618,18 +575,21 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     
     // Calculate aligned address (clear lower 2 bits)
+    wire [31:0] mem_dmem_addr_aligned;
     assign mem_dmem_addr_aligned = {mem_alu_result[31:2], 2'b00};
     
     // Get byte offset from address
+    wire [1:0] mem_byte_offset;
     assign mem_byte_offset = mem_alu_result[1:0];
     
-    // Adjust mask based on address offset
+    // Adjust mask based on address offset and instruction type
+    wire [3:0] mem_dmem_mask;
     assign mem_dmem_mask = 
         // For byte access (SB/LB/LBU)
         (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (4'b0001 << mem_byte_offset) : // SB
         (mem_instruction[6:0] == 7'b0000011 && mem_instruction[14:12] == 3'b000) ? (4'b0001 << mem_byte_offset) : // LB
         (mem_instruction[6:0] == 7'b0000011 && mem_instruction[14:12] == 3'b100) ? (4'b0001 << mem_byte_offset) : // LBU
-        // For half-word access (SH/LH/LHU)  
+        // For half-word access (SH/LH/LHU)
         (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b001) ? (mem_byte_offset[1] ? 4'b1100 : 4'b0011) : // SH
         (mem_instruction[6:0] == 7'b0000011 && mem_instruction[14:12] == 3'b001) ? (mem_byte_offset[1] ? 4'b1100 : 4'b0011) : // LH
         (mem_instruction[6:0] == 7'b0000011 && mem_instruction[14:12] == 3'b101) ? (mem_byte_offset[1] ? 4'b1100 : 4'b0011) : // LHU
@@ -637,6 +597,7 @@ module hart #(
         4'b1111;
     
     // Adjust write data position (shift to correct byte lane)
+    wire [31:0] mem_dmem_wdata;
     assign mem_dmem_wdata = 
         // SB: shift left by byte offset
         (mem_instruction[6:0] == 7'b0100011 && mem_instruction[14:12] == 3'b000) ? (mem_rs2_fwd_data << (mem_byte_offset * 8)) :
@@ -645,47 +606,71 @@ module hart #(
         // SW: no shift needed
         mem_rs2_fwd_data;
     
-`ifdef USE_CACHE
-    // Connect to data cache - only issue request when not already processing a miss
-    assign dcache_req_addr = mem_dmem_addr_aligned;
-    assign dcache_req_ren = mem_mem_read & mem_valid & ~dcache_busy;
-    assign dcache_req_wen = mem_mem_write & mem_valid & ~dcache_busy;
-    assign dcache_req_mask = mem_dmem_mask;
-    assign dcache_req_wdata = mem_dmem_wdata;
-`endif
-
-    // Extract load data in MEM stage for passing to MEM/WB
+    // Extract and extend load data based on offset
+    wire [31:0] mem_load_data;
     assign mem_load_data = 
         // LW - no adjustment needed
-        (mem_instruction[14:12] == 3'b010) ? mem_rdata_source :
+        (mem_instruction[14:12] == 3'b010) ? i_dmem_rdata :
         // LH - extract half-word and sign extend
         (mem_instruction[14:12] == 3'b001) ? 
-            (mem_byte_offset[1] ? {{16{mem_rdata_source[31]}}, mem_rdata_source[31:16]} :
-                                  {{16{mem_rdata_source[15]}}, mem_rdata_source[15:0]}) :
-        // LHU - extract half-word and zero extend  
+            (mem_byte_offset[1] ? {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]} :
+                                  {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]}) :
+        // LHU - extract half-word and zero extend
         (mem_instruction[14:12] == 3'b101) ?
-            (mem_byte_offset[1] ? {16'd0, mem_rdata_source[31:16]} :
-                                  {16'd0, mem_rdata_source[15:0]}) :
+            (mem_byte_offset[1] ? {16'd0, i_dmem_rdata[31:16]} :
+                                  {16'd0, i_dmem_rdata[15:0]}) :
         // LB - extract byte and sign extend
         (mem_instruction[14:12] == 3'b000) ?
-            (mem_byte_offset == 2'b00 ? {{24{mem_rdata_source[7]}}, mem_rdata_source[7:0]} :
-             mem_byte_offset == 2'b01 ? {{24{mem_rdata_source[15]}}, mem_rdata_source[15:8]} :
-             mem_byte_offset == 2'b10 ? {{24{mem_rdata_source[23]}}, mem_rdata_source[23:16]} :
-                                        {{24{mem_rdata_source[31]}}, mem_rdata_source[31:24]}) :
+            (mem_byte_offset == 2'b00 ? {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]} :
+             mem_byte_offset == 2'b01 ? {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]} :
+             mem_byte_offset == 2'b10 ? {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]} :
+                                        {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]}) :
         // LBU - extract byte and zero extend
-        (mem_byte_offset == 2'b00 ? {24'd0, mem_rdata_source[7:0]} :
-         mem_byte_offset == 2'b01 ? {24'd0, mem_rdata_source[15:8]} :
-         mem_byte_offset == 2'b10 ? {24'd0, mem_rdata_source[23:16]} :
-                                    {24'd0, mem_rdata_source[31:24]});
+        (mem_byte_offset == 2'b00 ? {24'd0, i_dmem_rdata[7:0]} :
+         mem_byte_offset == 2'b01 ? {24'd0, i_dmem_rdata[15:8]} :
+         mem_byte_offset == 2'b10 ? {24'd0, i_dmem_rdata[23:16]} :
+                                    {24'd0, i_dmem_rdata[31:24]});
+    
+    // Connect memory interface outputs
+    // Assert ren/wen when we have a valid memory operation
+    // Don't gate by dmem_stall (creates combinational loop)
+    // Deassert only when waiting for a pending miss to complete
+    assign o_dmem_addr = mem_dmem_addr_aligned;
+    assign o_dmem_ren = mem_valid && mem_mem_read && !dmem_miss_pending;
+    assign o_dmem_wen = mem_valid && mem_mem_write && !dmem_miss_pending;
+    assign o_dmem_mask = mem_dmem_mask;
+    assign o_dmem_wdata = mem_dmem_wdata;
     
     ////////////////////////////////////////////////////////////////////////////////
     // MEM/WB Pipeline Register
     ////////////////////////////////////////////////////////////////////////////////
+    wire [31:0] wb_alu_result;
+    wire [31:0] wb_load_data;
+    wire [31:0] wb_pc_plus_4;
+    wire [31:0] wb_pc;
+    wire [31:0] wb_instruction;
+    wire [4:0]  wb_rs1_addr;
+    wire [4:0]  wb_rs2_addr;
+    wire        wb_jump;
+    wire        wb_mem_to_reg;
+    wire [31:0] wb_next_pc_target;
+    wire        wb_valid;
+    
+    // Memory interface signals for retire
+    wire [31:0] wb_dmem_addr;
+    wire [3:0]  wb_dmem_mask;
+    wire        wb_dmem_ren;
+    wire        wb_dmem_wen;
+    wire [31:0] wb_dmem_wdata;
+    wire [1:0]  wb_mem_byte_offset;
+    wire [31:0] wb_rs1_fwd_data;
+    wire [31:0] wb_rs2_fwd_data;
     
     mem_wb MEM_WB (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_stall(cache_stall),
+        .i_stall(pipeline_stall),
+        .i_valid(mem_valid),
         // Writeback data candidates
         .i_alu_result(mem_alu_result),
         .i_load_data(mem_load_data),
@@ -693,6 +678,7 @@ module hart #(
         // Original data
         .i_pc(mem_pc),
         .i_instruction(mem_instruction),
+        .i_next_pc_target(mem_next_pc_target),
         // Address signals
         .i_rs1_addr(mem_rs1_addr),
         .i_rs2_addr(mem_rs2_addr),
@@ -709,15 +695,16 @@ module hart #(
         .i_mem_to_reg(mem_mem_to_reg),
         .i_jump(mem_jump),
         .i_retire_halt(mem_retire_halt),
-        .i_next_pc_target(mem_next_pc_target),
-        .i_valid(mem_valid),
-
+        // Forwarded data
+        .i_rs1_fwd_data(mem_rs1_fwd_data),
+        .i_rs2_fwd_data(mem_rs2_fwd_data),
         // Outputs to WB stage
         .o_alu_result(wb_alu_result),
         .o_load_data(wb_load_data),
         .o_pc_plus_4(wb_pc_plus_4),
         .o_pc(wb_pc),
         .o_instruction(wb_instruction),
+        .o_next_pc_target(wb_next_pc_target),
         .o_rs1_addr(wb_rs1_addr),
         .o_rs2_addr(wb_rs2_addr),
         .o_rd_addr(wb_rd_waddr),
@@ -726,17 +713,12 @@ module hart #(
         .o_dmem_ren(wb_dmem_ren),
         .o_dmem_wen(wb_dmem_wen),
         .o_dmem_wdata(wb_dmem_wdata),
+        .o_mem_byte_offset(wb_mem_byte_offset),
         .o_reg_write(wb_RegWrite),
         .o_mem_to_reg(wb_mem_to_reg),
         .o_jump(wb_jump),
         .o_retire_halt(wb_retire_halt),
-        .o_next_pc_target(wb_next_pc_target),
         .o_valid(wb_valid),
-        .o_mem_byte_offset(wb_mem_byte_offset),
-
-        // Forwarding
-        .i_rs1_fwd_data(mem_rs1_fwd_data),
-        .i_rs2_fwd_data(mem_rs2_fwd_data),
         .o_rs1_fwd_data(wb_rs1_fwd_data),
         .o_rs2_fwd_data(wb_rs2_fwd_data)
     );
@@ -754,7 +736,34 @@ module hart #(
     ////////////////////////////////////////////////////////////////////////////////
     // Retire Interface - Connected to WB stage outputs
     ////////////////////////////////////////////////////////////////////////////////
-    assign o_retire_valid = wb_valid & ~cache_stall;
+    
+    // Extract and extend retire dmem rdata based on offset (for retire interface)
+    wire [31:0] wb_retire_dmem_rdata_processed;
+    assign wb_retire_dmem_rdata_processed = 
+        // LW - no adjustment needed
+        (wb_instruction[14:12] == 3'b010) ? wb_load_data :
+        // LH - extract half-word and sign extend
+        (wb_instruction[14:12] == 3'b001) ? 
+            (wb_mem_byte_offset[1] ? {{16{wb_load_data[31]}}, wb_load_data[31:16]} :
+                                     {{16{wb_load_data[15]}}, wb_load_data[15:0]}) :
+        // LHU - extract half-word and zero extend
+        (wb_instruction[14:12] == 3'b101) ?
+            (wb_mem_byte_offset[1] ? {16'd0, wb_load_data[31:16]} :
+                                     {16'd0, wb_load_data[15:0]}) :
+        // LB - extract byte and sign extend
+        (wb_instruction[14:12] == 3'b000) ?
+            (wb_mem_byte_offset == 2'b00 ? {{24{wb_load_data[7]}}, wb_load_data[7:0]} :
+             wb_mem_byte_offset == 2'b01 ? {{24{wb_load_data[15]}}, wb_load_data[15:8]} :
+             wb_mem_byte_offset == 2'b10 ? {{24{wb_load_data[23]}}, wb_load_data[23:16]} :
+                                           {{24{wb_load_data[31]}}, wb_load_data[31:24]}) :
+        // LBU - extract byte and zero extend
+        (wb_mem_byte_offset == 2'b00 ? {24'd0, wb_load_data[7:0]} :
+         wb_mem_byte_offset == 2'b01 ? {24'd0, wb_load_data[15:8]} :
+         wb_mem_byte_offset == 2'b10 ? {24'd0, wb_load_data[23:16]} :
+                                       {24'd0, wb_load_data[31:24]});
+    
+    // Retire valid only when WB stage has valid instruction and not stalled
+    assign o_retire_valid = wb_valid && !pipeline_stall;
     assign o_retire_inst = wb_instruction;
     assign o_retire_trap = 1'b0;
     assign o_retire_halt = wb_retire_halt;
@@ -771,7 +780,7 @@ module hart #(
     assign o_retire_dmem_wen = wb_dmem_wen;
     assign o_retire_dmem_mask = wb_dmem_mask;
     assign o_retire_dmem_wdata = wb_dmem_wdata;
-    assign o_retire_dmem_rdata = mem_rdata_source;
+    assign o_retire_dmem_rdata = wb_load_data;
     assign o_retire_next_pc = wb_next_pc_target;
     assign o_retire_pc = wb_pc;
     
